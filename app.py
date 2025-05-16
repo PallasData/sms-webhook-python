@@ -55,6 +55,14 @@ def send_sms(to_number, message_body):
     auth_token = os.getenv('TWILIO_AUTH_TOKEN')
     phone_number = os.getenv('TWILIO_PHONE_NUMBER')
     
+    # Better debugging
+    print(f"=== SMS Debug Info ===")
+    print(f"To: {to_number}")
+    print(f"From: {phone_number}")
+    print(f"SID set: {'Yes' if account_sid else 'No'}")
+    print(f"Token set: {'Yes' if auth_token else 'No'}")
+    print(f"From number set: {'Yes' if phone_number else 'No'}")
+    
     if not all([account_sid, auth_token, phone_number]):
         print("ERROR: Twilio credentials not set")
         return False
@@ -62,6 +70,7 @@ def send_sms(to_number, message_body):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
     
     try:
+        print(f"Attempting to send SMS to {to_number}")
         response = requests.post(
             url,
             auth=(account_sid, auth_token),
@@ -71,6 +80,9 @@ def send_sms(to_number, message_body):
                 'Body': message_body
             }
         )
+        
+        print(f"Response status: {response.status_code}")
+        print(f"Response content: {response.text}")
         
         if response.status_code == 201:
             print(f"SMS sent successfully to {to_number}")
