@@ -337,6 +337,12 @@ def dashboard():
         button:hover {
             background-color: #0056b3;
         }
+        .danger-button {
+            background-color: #dc3545;
+        }
+        .danger-button:hover {
+            background-color: #c82333;
+        }
         .section {
             border-bottom: 1px solid #eee;
             padding-bottom: 20px;
@@ -413,6 +419,13 @@ def dashboard():
                     </tbody>
                 </table>
             </div>
+        </div>
+        
+        <div class="section">
+            <h2>Database Management</h2>
+            <p style="color: #6c757d; font-size: 14px;">⚠️ Danger Zone: These actions cannot be undone!</p>
+            <button class="danger-button" onclick="clearDatabase()">Clear All Data</button>
+            <button onclick="resetSurveySent()">Reset Survey Sent Status</button>
         </div>
         
         <div class="section">
@@ -551,6 +564,50 @@ def dashboard():
                 showStatus('Error checking health: ' + error.message, false);
             }
         }
+
+        async function clearDatabase() {
+            if (!confirm('Are you sure you want to delete ALL participants and responses? This cannot be undone!')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/clear_database`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+                
+                // Refresh participants view if it's open
+                if (document.getElementById('participantsTable').style.display !== 'none') {
+                    viewParticipants();
+                }
+            } catch (error) {
+                showStatus('Error clearing database: ' + error.message, false);
+            }
+        }
+
+        async function resetSurveySent() {
+            if (!confirm('Reset survey sent status for all participants?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/reset_survey_status`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+                
+                // Refresh participants view if it's open
+                if (document.getElementById('participantsTable').style.display !== 'none') {
+                    viewParticipants();
+                }
+            } catch (error) {
+                showStatus('Error resetting survey status: ' + error.message, false);
+            }
+        }
     </script>
 </body>
 </html>'''
@@ -564,3 +621,41 @@ if __name__ == '__main__':
     
     # Run the app
     app.run(host='0.0.0.0', port=port, debug=False)
+    
+@app.route('/clear_database', methods=['POST'])
+def clear_database():
+    """Clear all data from the database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # Delete all participants
+        cursor.execute("DELETE FROM participants")
+        # Delete all responses
+        cursor.execute("DELETE FROM responses")
+        # Reset auto-increment counters
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='participants'")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='responses'")
+        
+        conn.commit()
+        return {'status': 'success', 'message': 'Database cleared successfully'}
+    except Exception as e:  
+        return {'status': 'error', 'message': f'Error clearing database: {str(e)}'}, 500
+    finally:
+        conn.close()
+
+@app.route('/reset_survey_status', methods=['POST'])
+def reset_survey_status():
+    """Reset survey_sent status for all participants"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE participants SET survey_sent = 0")
+        rows_affected = cursor.rowcount
+        conn.commit()
+        return {'status': 'success', 'message': f'Reset survey status for {rows_affected} participants'}
+    except Exception as e:
+        return {'status': 'error', 'message': f'Error resetting survey status: {str(e)}'}, 500
+    finally:
+        conn.close()
