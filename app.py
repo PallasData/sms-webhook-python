@@ -152,7 +152,93 @@ def process_sms_response(from_number, message_body):
 
 @app.route('/')
 def home():
-    return "SMS Webhook is Running!"
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>SMS Management Dashboard</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+            .form-group { margin-bottom: 20px; }
+            label { display: block; margin-bottom: 5px; font-weight: bold; }
+            input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+            button { background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+            button:hover { background-color: #0056b3; }
+            #status { margin-top: 10px; padding: 10px; border-radius: 5px; display: none; }
+            .success { background-color: #d4edda; color: #155724; }
+            .error { background-color: #f8d7da; color: #721c24; }
+        </style>
+    </head>
+    <body>
+        <h1>SMS Management Dashboard</h1>
+        
+        <h2>Send Consent Request</h2>
+        <div class="form-group">
+            <label for="phone">Phone Number:</label>
+            <input type="text" id="phone" placeholder="+16478941552">
+        </div>
+        <button onclick="sendConsent()">Send Consent Request</button>
+        
+        <h2>View Participants</h2>
+        <button onclick="viewParticipants()">View All Participants</button>
+        <div id="participants" style="margin-top: 20px;"></div>
+        
+        <div id="status"></div>
+        
+        <script>
+            function showStatus(message, isSuccess) {
+                const status = document.getElementById('status');
+                status.textContent = message;
+                status.className = isSuccess ? 'success' : 'error';
+                status.style.display = 'block';
+                setTimeout(() => status.style.display = 'none', 5000);
+            }
+            
+            async function sendConsent() {
+                const phone = document.getElementById('phone').value;
+                if (!phone) {
+                    showStatus('Please enter a phone number', false);
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/send_consent', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `phone_number=${encodeURIComponent(phone)}`
+                    });
+                    
+                    const result = await response.json();
+                    showStatus(result.message, response.ok);
+                } catch (error) {
+                    showStatus('Error: ' + error.message, false);
+                }
+            }
+            
+            async function viewParticipants() {
+                try {
+                    const response = await fetch('/participants');
+                    const result = await response.json();
+                    
+                    const div = document.getElementById('participants');
+                    if (result.status === 'success' && result.data.length > 0) {
+                        let html = '<table border="1" style="width:100%; border-collapse: collapse;"><tr><th>Phone</th><th>Status</th><th>Email</th></tr>';
+                        result.data.forEach(p => {
+                            html += `<tr><td>${p.phone_number}</td><td>${p.consent_status}</td><td>${p.email || 'N/A'}</td></tr>`;
+                        });
+                        html += '</table>';
+                        div.innerHTML = html;
+                    } else {
+                        div.innerHTML = 'No participants found';
+                    }
+                } catch (error) {
+                    showStatus('Error: ' + error.message, false);
+                }
+            }
+        </script>
+    </body>
+    </html>
+    '''
 
 @app.route('/health')
 def health():
