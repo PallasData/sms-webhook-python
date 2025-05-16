@@ -283,6 +283,46 @@ def participants():
         'data': [dict(zip([col[0] for col in cursor.description], row)) for row in rows]
     }
 
+@app.route('/clear_database', methods=['POST'])
+def clear_database():
+    """Clear all data from the database"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Delete all participants
+        cursor.execute("DELETE FROM participants")
+        # Delete all responses  
+        cursor.execute("DELETE FROM responses")
+        # Reset auto-increment counters
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='participants'")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='responses'")
+        
+        conn.commit()
+        return {'status': 'success', 'message': 'Database cleared successfully'}
+    except Exception as e:  
+        return {'status': 'error', 'message': 'Error clearing database: ' + str(e)}, 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+@app.route('/reset_survey_status', methods=['POST'])
+def reset_survey_status():
+    """Reset survey_sent status for all participants"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("UPDATE participants SET survey_sent = 0")
+        rows_affected = cursor.rowcount
+        conn.commit()
+        return {'status': 'success', 'message': 'Reset survey status for ' + str(rows_affected) + ' participants'}
+    except Exception as e:
+        return {'status': 'error', 'message': 'Error resetting survey status: ' + str(e)}, 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 @app.route('/')
 def dashboard():
     """Serve the dashboard HTML"""
@@ -621,43 +661,3 @@ if __name__ == '__main__':
     
     # Run the app
     app.run(host='0.0.0.0', port=port, debug=False)
-    
-@app.route('/clear_database', methods=['POST'])
-def clear_database():
-    """Clear all data from the database"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Delete all participants
-        cursor.execute("DELETE FROM participants")
-        # Delete all responses  
-        cursor.execute("DELETE FROM responses")
-        # Reset auto-increment counters
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name='participants'")
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name='responses'")
-        
-        conn.commit()
-        return {'status': 'success', 'message': 'Database cleared successfully'}
-    except Exception as e:  
-        return {'status': 'error', 'message': 'Error clearing database: ' + str(e)}, 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-@app.route('/reset_survey_status', methods=['POST'])
-def reset_survey_status():
-    """Reset survey_sent status for all participants"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute("UPDATE participants SET survey_sent = 0")
-        rows_affected = cursor.rowcount
-        conn.commit()
-        return {'status': 'success', 'message': 'Reset survey status for ' + str(rows_affected) + ' participants'}
-    except Exception as e:
-        return {'status': 'error', 'message': 'Error resetting survey status: ' + str(e)}, 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
