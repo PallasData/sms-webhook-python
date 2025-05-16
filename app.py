@@ -112,23 +112,24 @@ def process_sms_response(from_number, message_body):
             send_sms(from_number, opt_out_msg)
             print(f"Sent opt-out confirmation to {from_number}")
             
-        elif message_upper.startswith("EMAIL"):
-            # Extract email from message
+        elif message_upper.startswith("EMAIL") or re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', message_body):
+            # Handle both "EMAIL address@email.com" and plain "address@email.com"
             email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', message_body)
             if email_match:
                 email = email_match.group()
+                # Update both email AND consent status
                 cursor.execute(
-                    "UPDATE participants SET email = ? WHERE phone_number = ?",
+                    "UPDATE participants SET email = ?, consent_status = 'consented', consent_timestamp = CURRENT_TIMESTAMP WHERE phone_number = ?",
                     (email, from_number)
                 )
                 
-                # Send email confirmation
-                email_msg = f"Thanks! We've saved your email: {email}. Reply YES to also consent to SMS surveys."
+                # Send confirmation for both email and SMS consent
+                email_msg = f"Thanks! We've saved your email: {email}. You're now signed up for both SMS and email surveys. Reply STOP anytime to unsubscribe."
                 send_sms(from_number, email_msg)
-                print(f"Sent email confirmation to {from_number}")
+                print(f"Sent email and consent confirmation to {from_number}")
         else:
             # Handle unknown responses
-            help_msg = "Reply YES to consent, NO to opt out, or EMAIL followed by your email address."
+            help_msg = "Reply YES to consent to SMS surveys, NO to opt out, or provide your email address to sign up for both SMS and email surveys."
             send_sms(from_number, help_msg)
             print(f"Sent help message to {from_number}")
         
@@ -144,7 +145,7 @@ def send_consent_request(phone_numbers):
         "Hi! This is Pallas Data. You previously expressed interest in participating in our surveys. "
         "We'd like to text you survey links occasionally. "
         "Reply 'YES' to consent or 'NO' to opt out. "
-        "You can also reply 'EMAIL' followed by your email address. "
+        "You can also reply with your email address if you want to also get surveys emailed to you. "
         "Thanks!"
     )
     
