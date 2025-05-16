@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Management Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="url"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .section {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .section:last-child {
+            border-bottom: none;
+        }
+        #status {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+        .form-row input {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 SMS Management Dashboard</h1>
+        
+        <div class="section">
+            <h2>Send Consent Request</h2>
+            <div class="form-group">
+                <label for="phone">Phone Number (e.g., +16478941552):</label>
+                <input type="text" id="phone" placeholder="+1234567890">
+            </div>
+            <button onclick="sendConsent()">Send Consent Request</button>
+        </div>
+        
+        <div class="section">
+            <h2>Send Survey Link</h2>
+            <div class="form-group">
+                <label for="surveyUrl">Survey URL:</label>
+                <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
+            </div>
+            <div class="form-group">
+                <label for="customMessage">Custom Message (optional):</label>
+                <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
+            </div>
+            <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
+        </div>
+        
+        <div class="section">
+            <h2>Manage Participants</h2>
+            <button onclick="viewParticipants()">View All Participants</button>
+            <div id="participantsTable" style="margin-top: 20px; display: none;">
+                <table id="participantsData" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
+                        </tr>
+                    </thead>
+                    <tbody id="participantsBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>App Status</h2>
+            <button onclick="checkHealth()">Check App Health</button>
+            <div id="healthInfo" style="margin-top: 10px; display: none;">
+                <div id="healthStatus"></div>
+            </div>
+        </div>
+        
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        function showStatus(message, isSuccess = true) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = isSuccess ? 'success' : 'error';
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        async function sendConsent() {
+            const phone = document.getElementById('phone').value;
+            if (!phone) {
+                showStatus('Please enter a phone number', false);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/send_consent`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `phone_number=${encodeURIComponent(phone)}`
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+            } catch (error) {
+                showStatus('Error sending consent request: ' + error.message, false);
+            }
+        }
+
+        async function sendSurvey() {
+            const surveyUrl = document.getElementById('surveyUrl').value;
+            const customMessage = document.getElementById('customMessage').value;
+            
+            if (!surveyUrl) {
+                showStatus('Please enter a survey URL', false);
+                return;
+            }
+
+            try {
+                const body = `survey_url=${encodeURIComponent(surveyUrl)}`;
+                const fullBody = customMessage ? 
+                    `${body}&custom_message=${encodeURIComponent(customMessage)}` : body;
+                
+                const response = await fetch(`${API_BASE}/send_survey`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: fullBody
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+            } catch (error) {
+                showStatus('Error sending survey: ' + error.message, false);
+            }
+        }
+
+        async function viewParticipants() {
+            try {
+                const response = await fetch(`${API_BASE}/participants`);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const tbody = document.getElementById('participantsBody');
+                    tbody.innerHTML = '';
+                    
+                    if (result.data && result.data.length > 0) {
+                        result.data.forEach(participant => {
+                            const row = tbody.insertRow();
+                            row.insertCell(0).textContent = participant.phone_number;
+                            row.insertCell(1).textContent = participant.consent_status;
+                            row.insertCell(2).textContent = participant.email || 'N/A';
+                            row.insertCell(3).textContent = participant.survey_sent ? 'Yes' : 'No';
+                        });
+                    } else {
+                        const row = tbody.insertRow();
+                        const cell = row.insertCell(0);
+                        cell.colSpan = 4;
+                        cell.textContent = 'No participants found';
+                        cell.style.textAlign = 'center';
+                    }
+                    
+                    document.getElementById('participantsTable').style.display = 'block';
+                    showStatus('Participants loaded successfully', true);
+                } else {
+                    showStatus('Error loading participants', false);
+                }
+            } catch (error) {
+                showStatus('Error fetching participants: ' + error.message, false);
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const result = await response.json();
+                
+                const healthStatus = document.getElementById('healthStatus');
+                if (result.status === 'healthy') {
+                    healthStatus.innerHTML = `
+                        <div style="color: green;">
+                            <strong>✅ App is healthy!</strong><br>
+                            Timestamp: ${result.timestamp}<br>
+                            Database: ${result.database ? 'Connected' : 'Not connected'}
+                        </div>
+                    `;
+                    showStatus('Health check successful', true);
+                } else {
+                    healthStatus.innerHTML = `<div style="color: red;">❌ App is unhealthy</div>`;
+                    showStatus('Health check failed', false);
+                }
+                
+                document.getElementById('healthInfo').style.display = 'block';
+            } catch (error) {
+                showStatus('Error checking health: ' + error.message, false);
+            }
+        }
+    </script>
+</body>
+</html>
