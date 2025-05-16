@@ -204,12 +204,21 @@ def send_survey_link(survey_url, custom_message=None):
 def webhook():
     """Handle Twilio webhook"""
     print(f"=== Webhook called at {datetime.now()} ===")
+    print(f"Request form data: {request.form}")
     
     from_number = request.form.get('From')
     message_body = request.form.get('Body')
     
     print(f"From: {from_number}")
     print(f"Message: {message_body}")
+    
+    # Check if participant exists
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM participants WHERE phone_number = ?", (from_number,))
+    participant = cursor.fetchone()
+    print(f"Participant found: {participant}")
+    conn.close()
     
     if from_number and message_body:
         process_sms_response(from_number, message_body)
@@ -232,6 +241,19 @@ def send_consent_endpoint():
     """Endpoint to send consent request"""
     phone_number = request.form.get('phone_number')
     if phone_number:
+        # Ensure participant exists in database before sending
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT OR IGNORE INTO participants (phone_number) VALUES (?)",
+                (phone_number,)
+            )
+            conn.commit()
+            print(f"Participant {phone_number} added to database")
+        finally:
+            conn.close()
+        
         send_consent_request([phone_number])
         return {'status': 'success', 'message': f'Consent request sent to {phone_number}'}
     return {'status': 'error', 'message': 'Phone number required'}, 400
