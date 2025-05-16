@@ -124,7 +124,7 @@ def process_sms_response(from_number, message_body):
                 )
                 
                 # Send confirmation for both email and SMS consent
-                email_msg = f"Thanks! We've saved your email: {email}. You're now signed up for both SMS and email surveys. Reply STOP anytime to unsubscribe."
+                email_msg = f"Thanks! We've saved your email: {email}. You're now signed up for email surveys. Reply STOP anytime to unsubscribe."
                 send_sms(from_number, email_msg)
                 print(f"Sent email and consent confirmation to {from_number}")
         else:
