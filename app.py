@@ -77,38 +77,52 @@ def process_sms_response(from_number, message_body):
     """Process incoming SMS response"""
     print(f"Processing response from {from_number}")
     
-    # Normalize the phone number - some carriers might add different prefixes
-    # This ensures we find the right record regardless of format differences
-    normalized_number = normalize_phone_number(from_number)
-    print(f"Normalized number: {normalized_number}")
-    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     try:
-        # Log the original, non-normalized response for record-keeping
+        # Log the response
         cursor.execute(
             "INSERT INTO responses (phone_number, message_body) VALUES (?, ?)",
             (from_number, message_body)
         )
-        conn.commit()
         
         # Process the response
         message_upper = message_body.strip().upper()
         print(f"Processing message: '{message_upper}'")
         
-        # Check if the participant exists in the database
-        cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (normalized_number,))
+        # Check if the participant exists in the database with EXACT match
+        cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (from_number,))
         participant = cursor.fetchone()
         
         if not participant:
-            # Try searching without normalization as fallback
-            cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (from_number,))
-            participant = cursor.fetchone()
+            print(f"Searching for alternative formats for number {from_number}")
+            # Try searching for the number without the '+' prefix
+            if from_number.startswith('+'):
+                alt_number = from_number[1:]  # Remove the '+' prefix
+                cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (alt_number,))
+                participant = cursor.fetchone()
             
+            # Try searching with '+' prefix
+            if not participant and not from_number.startswith('+') and from_number.isdigit():
+                alt_number = '+' + from_number
+                cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (alt_number,))
+                participant = cursor.fetchone()
+                
+            # If we still can't find it, try removing the country code if it's there
+            if not participant and (from_number.startswith('+1') or from_number.startswith('1')):
+                if from_number.startswith('+1'):
+                    alt_number = from_number[2:]  # Remove the '+1' prefix
+                elif from_number.startswith('1'):
+                    alt_number = from_number[1:]  # Remove the '1' prefix
+                cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (alt_number,))
+                participant = cursor.fetchone()
+                
             if not participant:
-                print(f"No participant found for number {normalized_number} or {from_number}")
-                # Optionally handle unknown participants here
+                print(f"No participant found for number {from_number} after trying alternative formats")
+                # Send a message that we couldn't identify them
+                help_msg = "We couldn't identify your number in our system. Please text START to join our survey list."
+                send_sms(from_number, help_msg)
                 return
         
         # Get the actual phone number as stored in database
@@ -116,6 +130,7 @@ def process_sms_response(from_number, message_body):
         print(f"Found participant with number: {stored_number}")
         
         if message_upper == "YES":
+            print(f"Processing YES response for {stored_number}")
             # Update consent status
             cursor.execute(
                 "UPDATE participants SET consent_status = 'consented', consent_timestamp = CURRENT_TIMESTAMP WHERE phone_number = ?",
@@ -123,17 +138,12 @@ def process_sms_response(from_number, message_body):
             )
             rows_affected = cursor.rowcount
             conn.commit()
-            print(f"Updated consent status for {stored_number}, rows affected: {rows_affected}")
-            
-            # Verify the update worked
-            cursor.execute("SELECT consent_status FROM participants WHERE phone_number = ?", (stored_number,))
-            new_status = cursor.fetchone()
-            print(f"New consent status for {stored_number}: {new_status}")
+            print(f"Updated consent status, rows affected: {rows_affected}")
             
             # Send thank you message
             thank_you_msg = "Thank you for consenting! You'll receive survey links occasionally. Reply STOP anytime to unsubscribe."
-            send_sms(from_number, thank_you_msg)
-            print(f"Sent consent confirmation to {from_number}")
+            send_result = send_sms(from_number, thank_you_msg)
+            print(f"Sent thank you message: {send_result}")
             
         elif message_upper in ["NO", "STOP"]:
             # Update consent status
@@ -169,7 +179,8 @@ def process_sms_response(from_number, message_body):
             help_msg = "Reply YES to consent to SMS surveys, NO to opt out, or provide your email address to sign up for both SMS and email surveys."
             send_sms(from_number, help_msg)
             print(f"Sent help message to {from_number}")
-    
+        
+        conn.commit()
     except Exception as e:
         print(f"Error processing response: {e}")
         import traceback
