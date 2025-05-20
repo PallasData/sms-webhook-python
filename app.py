@@ -1171,8 +1171,7 @@ def dashboard():
 </body>
 </html>'''
 
-if __name__ == '__main__':
-    @app.route('/export_data', methods=['GET'])
+@app.route('/export_data', methods=['GET'])
 def export_data():
     """Export all data to a CSV file"""
     try:
@@ -1230,7 +1229,8 @@ def export_data():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
-        
+if __name__ == '__main__':
+    
     # Initialize database
     init_database()
     
