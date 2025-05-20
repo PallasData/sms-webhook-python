@@ -77,25 +77,58 @@ def process_sms_response(from_number, message_body):
     """Process incoming SMS response"""
     print(f"Processing response from {from_number}")
     
+    # Normalize the phone number - some carriers might add different prefixes
+    # This ensures we find the right record regardless of format differences
+    normalized_number = normalize_phone_number(from_number)
+    print(f"Normalized number: {normalized_number}")
+    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     try:
-        # Log the response
+        # Log the original, non-normalized response for record-keeping
         cursor.execute(
             "INSERT INTO responses (phone_number, message_body) VALUES (?, ?)",
             (from_number, message_body)
         )
+        conn.commit()
         
         # Process the response
         message_upper = message_body.strip().upper()
+        print(f"Processing message: '{message_upper}'")
+        
+        # Check if the participant exists in the database
+        cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (normalized_number,))
+        participant = cursor.fetchone()
+        
+        if not participant:
+            # Try searching without normalization as fallback
+            cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (from_number,))
+            participant = cursor.fetchone()
+            
+            if not participant:
+                print(f"No participant found for number {normalized_number} or {from_number}")
+                # Optionally handle unknown participants here
+                return
+        
+        # Get the actual phone number as stored in database
+        stored_number = participant[0]
+        print(f"Found participant with number: {stored_number}")
         
         if message_upper == "YES":
             # Update consent status
             cursor.execute(
                 "UPDATE participants SET consent_status = 'consented', consent_timestamp = CURRENT_TIMESTAMP WHERE phone_number = ?",
-                (from_number,)
+                (stored_number,)
             )
+            rows_affected = cursor.rowcount
+            conn.commit()
+            print(f"Updated consent status for {stored_number}, rows affected: {rows_affected}")
+            
+            # Verify the update worked
+            cursor.execute("SELECT consent_status FROM participants WHERE phone_number = ?", (stored_number,))
+            new_status = cursor.fetchone()
+            print(f"New consent status for {stored_number}: {new_status}")
             
             # Send thank you message
             thank_you_msg = "Thank you for consenting! You'll receive survey links occasionally. Reply STOP anytime to unsubscribe."
@@ -106,8 +139,9 @@ def process_sms_response(from_number, message_body):
             # Update consent status
             cursor.execute(
                 "UPDATE participants SET consent_status = 'declined' WHERE phone_number = ?",
-                (from_number,)
+                (stored_number,)
             )
+            conn.commit()
             
             # Send opt-out confirmation
             opt_out_msg = "You've been removed from our survey list. Thank you!"
@@ -122,8 +156,9 @@ def process_sms_response(from_number, message_body):
                 # Update both email AND consent status
                 cursor.execute(
                     "UPDATE participants SET email = ?, consent_status = 'consented', consent_timestamp = CURRENT_TIMESTAMP WHERE phone_number = ?",
-                    (email, from_number)
+                    (email, stored_number)
                 )
+                conn.commit()
                 
                 # Send confirmation for both email and SMS consent
                 email_msg = f"Thanks! We've saved your email: {email}. You're now signed up for email surveys. Reply STOP anytime to unsubscribe."
@@ -134,12 +169,35 @@ def process_sms_response(from_number, message_body):
             help_msg = "Reply YES to consent to SMS surveys, NO to opt out, or provide your email address to sign up for both SMS and email surveys."
             send_sms(from_number, help_msg)
             print(f"Sent help message to {from_number}")
-        
-        conn.commit()
+    
     except Exception as e:
         print(f"Error processing response: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         conn.close()
+
+def normalize_phone_number(phone):
+    """
+    Normalize phone number to a consistent format
+    Handles cases where carrier might add or remove country code
+    """
+    # Remove any non-digit characters
+    digits_only = re.sub(r'\D', '', phone)
+    
+    # Handle North American numbers (assuming this is for NA market)
+    if len(digits_only) == 10:
+        # Add US/Canada country code if 10 digits
+        return "+1" + digits_only
+    elif len(digits_only) == 11 and digits_only.startswith('1'):
+        # Add + if it's a standard NA format with country code
+        return "+" + digits_only
+    elif digits_only.startswith('+'):
+        # Already has + prefix
+        return phone
+    else:
+        # Return as is if we can't normalize it
+        return phone
 
 def send_consent_request(phone_numbers):
     """Send consent request to list of phone numbers"""
@@ -323,27 +381,22 @@ def webhook():
     print(f"=== Webhook called at {datetime.now()} ===")
     print(f"Request form data: {request.form}")
     
+    # Twilio sends the phone number in the 'From' field
     from_number = request.form.get('From')
-    message_body = request.form.get('Body')
+    message_body = request.form.get('Body', '').strip()
     
     print(f"From: {from_number}")
     print(f"Message: {message_body}")
     
-    # Check if participant exists
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM participants WHERE phone_number = ?", (from_number,))
-    participant = cursor.fetchone()
-    print(f"Participant found: {participant}")
-    conn.close()
-    
+    # Check if participant exists in database
     if from_number and message_body:
+        # Process the response
         process_sms_response(from_number, message_body)
         print("Processing complete!")
     
     # Return TwiML response
     return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 200, {'Content-Type': 'text/xml'}
-
+    
 @app.route('/health')
 def health():
     """Health check endpoint"""
