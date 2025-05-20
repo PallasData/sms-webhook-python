@@ -5,6 +5,7 @@ import csv
 import io
 from datetime import datetime
 from flask import Flask, request, jsonify
+from flask import Response
 import requests
 
 # Initialize Flask app
@@ -815,24 +816,27 @@ def dashboard():
         </div>
         
         <div id="tab-manage" class="tab-content">
-            <div class="section">
-                <h2>Manage Participants</h2>
-                <button onclick="viewParticipants()">View All Participants</button>
-                <div id="participantsTable" style="margin-top: 20px; display: none;">
-                    <table id="participantsData" style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background-color: #f8f9fa;">
-                                <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
-                            </tr>
-                        </thead>
-                        <tbody id="participantsBody">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+<div class="section">
+    <h2>Manage Participants</h2>
+    <div style="margin-bottom: 15px;">
+        <button onclick="viewParticipants()">View All Participants</button>
+        <button onclick="exportResponses()">Export Data to CSV</button>
+    </div>
+    <div id="participantsTable" style="margin-top: 20px; display: none;">
+        <table id="participantsData" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background-color: #f8f9fa;">
+                    <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
+                </tr>
+            </thead>
+            <tbody id="participantsBody">
+            </tbody>
+        </table>
+    </div>
+</div>
             
             <div class="section">
                 <h2>Database Management</h2>
@@ -1141,11 +1145,68 @@ def dashboard():
                 showStatus('Error resetting survey status: ' + error.message, false);
             }
         }
+        function exportResponses() {
+    // Directly trigger download by navigating to the export endpoint
+    window.location.href = `${API_BASE}/export_responses`;
+    
+    // Show status message
+    showStatus('Generating CSV export. Download should begin shortly.', true);
+}
     </script>
 </body>
 </html>'''
 
 if __name__ == '__main__':
+    @app.route('/export_responses', methods=['GET'])
+def export_responses():
+    """Export all responses to a CSV file"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Get all participants with their information
+        cursor.execute("""
+            SELECT p.phone_number, p.consent_status, p.email, p.survey_sent, 
+                   p.created_at, p.consent_timestamp, r.message_body, r.timestamp as response_timestamp
+            FROM participants p
+            LEFT JOIN responses r ON p.phone_number = r.phone_number
+            ORDER BY p.phone_number, r.timestamp
+        """)
+        
+        rows = cursor.fetchall()
+        column_names = [description[0] for description in cursor.description]
+        
+        conn.close()
+        
+        if not rows:
+            return jsonify({"status": "error", "message": "No data to export"}), 404
+        
+        # Create a CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header row
+        writer.writerow(column_names)
+        
+        # Write data rows
+        for row in rows:
+            writer.writerow(row)
+        
+        # Prepare the output
+        output.seek(0)
+        
+        # Set headers for CSV download
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-disposition": f"attachment; filename=survey_responses_{timestamp}.csv"}
+        )
+    
+    except Exception as e:
+        print(f"Error exporting responses: {e}")
+        return jsonify({"status": "error", "message": f"Error generating CSV: {str(e)}"}), 500
+        
     # Initialize database
     init_database()
     
