@@ -1,8 +1,10 @@
 import os
 import sqlite3
 import re
+import csv
+import io
 from datetime import datetime
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import requests
 
 # Initialize Flask app
@@ -149,7 +151,19 @@ def send_consent_request(phone_numbers):
         "Thanks!"
     )
     
+    results = {"success": [], "failed": []}
+    
     for phone in phone_numbers:
+        # Clean phone number
+        phone = phone.strip()
+        if not phone:
+            continue
+            
+        # Validate phone number format
+        if not is_valid_phone_number(phone):
+            results["failed"].append({"phone": phone, "reason": "Invalid phone number format"})
+            continue
+        
         # Add to database
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -159,14 +173,38 @@ def send_consent_request(phone_numbers):
                 (phone,)
             )
             conn.commit()
+        except Exception as e:
+            results["failed"].append({"phone": phone, "reason": f"Database error: {str(e)}"})
+            continue
         finally:
             conn.close()
         
         # Send SMS
-        send_sms(phone, consent_message)
+        if send_sms(phone, consent_message):
+            results["success"].append(phone)
+        else:
+            results["failed"].append({"phone": phone, "reason": "Failed to send SMS"})
+        
         # Add small delay for rate limiting
         import time
         time.sleep(1)
+    
+    return results
+
+def is_valid_phone_number(phone):
+    """
+    Basic validation for phone numbers
+    Accepts formats like: +1234567890, 1234567890, etc.
+    """
+    # Remove spaces, dashes, and parentheses
+    clean_phone = re.sub(r'[\s\-\(\)]', '', phone)
+    
+    # Check if it's a valid international format (starting with +)
+    if clean_phone.startswith('+'):
+        return re.match(r'^\+\d{10,15}$', clean_phone) is not None
+    
+    # Check if it's a valid US/CA format (10 digits, optionally starting with 1)
+    return re.match(r'^1?\d{10}$', clean_phone) is not None
 
 def send_survey_link(survey_url, custom_message=None):
     """Send survey link to consented participants"""
@@ -200,6 +238,84 @@ def send_survey_link(survey_url, custom_message=None):
         
         import time
         time.sleep(1)  # Rate limiting
+
+def process_csv_file(file_content):
+    """Process CSV file content and extract phone numbers"""
+    try:
+        # Try to decode the file content as UTF-8
+        if isinstance(file_content, bytes):
+            file_content = file_content.decode('utf-8')
+        
+        # Use StringIO to create a file-like object
+        csv_file = io.StringIO(file_content)
+        
+        # Try to read the CSV file
+        reader = csv.reader(csv_file)
+        
+        # Get all rows
+        rows = list(reader)
+        
+        if not rows:
+            return {"status": "error", "message": "CSV file is empty"}
+        
+        # Extract phone numbers
+        phone_numbers = []
+        
+        # Check the first row for headers
+        first_row = rows[0]
+        header_row = True
+        
+        # Look for columns that might contain phone numbers
+        phone_col_indices = []
+        for i, header in enumerate(first_row):
+            header_lower = header.lower()
+            if any(keyword in header_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
+                phone_col_indices.append(i)
+        
+        # If we couldn't find any phone columns, maybe the first row isn't a header
+        if not phone_col_indices:
+            # Check if the first row might contain phone numbers itself
+            if any(is_valid_phone_number(cell) for cell in first_row):
+                header_row = False
+                # Just take the first column that has a valid phone number
+                for i, cell in enumerate(first_row):
+                    if is_valid_phone_number(cell):
+                        phone_col_indices.append(i)
+                        break
+        
+        # If we still couldn't find phone columns, try the first column
+        if not phone_col_indices:
+            phone_col_indices.append(0)
+        
+        # Start from the appropriate row (skip header if we identified one)
+        start_row = 1 if header_row else 0
+        
+        # Extract phone numbers from identified columns
+        for row in rows[start_row:]:
+            for i in phone_col_indices:
+                if i < len(row) and row[i].strip():
+                    phone = row[i].strip()
+                    if is_valid_phone_number(phone):
+                        phone_numbers.append(phone)
+                        # Once we find a valid phone in a row, move to the next row
+                        break
+        
+        # Remove duplicates while preserving order
+        unique_phones = []
+        seen = set()
+        for phone in phone_numbers:
+            if phone not in seen:
+                seen.add(phone)
+                unique_phones.append(phone)
+        
+        return {
+            "status": "success", 
+            "phone_numbers": unique_phones,
+            "total": len(unique_phones)
+        }
+    
+    except Exception as e:
+        return {"status": "error", "message": f"Error processing CSV: {str(e)}"}
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -255,9 +371,89 @@ def send_consent_endpoint():
         finally:
             conn.close()
         
-        send_consent_request([phone_number])
-        return {'status': 'success', 'message': f'Consent request sent to {phone_number}'}
+        results = send_consent_request([phone_number])
+        if phone_number in results["success"]:
+            return {'status': 'success', 'message': f'Consent request sent to {phone_number}'}
+        else:
+            failed_entry = next((entry for entry in results["failed"] if entry["phone"] == phone_number), None)
+            reason = failed_entry["reason"] if failed_entry else "Unknown error"
+            return {'status': 'error', 'message': f'Failed to send consent request: {reason}'}, 400
+    
     return {'status': 'error', 'message': 'Phone number required'}, 400
+
+@app.route('/upload_csv', methods=['POST'])
+def upload_csv():
+    """Handle CSV upload and process phone numbers"""
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "No selected file"}), 400
+    
+    if not file.filename.endswith('.csv'):
+        return jsonify({"status": "error", "message": "File must be a CSV"}), 400
+    
+    try:
+        # Read the file content
+        file_content = file.read()
+        
+        # Process the CSV file
+        result = process_csv_file(file_content)
+        
+        if result["status"] == "error":
+            return jsonify(result), 400
+        
+        # Check if we should send consent requests immediately
+        send_immediately = request.form.get('send_immediately') == 'true'
+        
+        if send_immediately and result["phone_numbers"]:
+            # Send consent requests to extracted phone numbers
+            send_results = send_consent_request(result["phone_numbers"])
+            
+            return jsonify({
+                "status": "success",
+                "message": f"Processed CSV and sent consent requests",
+                "total_numbers": result["total"],
+                "successful_sends": len(send_results["success"]),
+                "failed_sends": len(send_results["failed"]),
+                "failures": send_results["failed"]
+            })
+        
+        # Just return the extracted phone numbers
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully extracted {result['total']} phone numbers from CSV",
+            "phone_numbers": result["phone_numbers"],
+            "total": result["total"]
+        })
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error processing file: {str(e)}"}), 500
+
+@app.route('/send_bulk_consent', methods=['POST'])
+def send_bulk_consent():
+    """Send consent requests to a list of phone numbers"""
+    data = request.get_json()
+    if not data or 'phone_numbers' not in data or not isinstance(data['phone_numbers'], list):
+        return jsonify({"status": "error", "message": "Phone numbers list required"}), 400
+    
+    phone_numbers = data['phone_numbers']
+    if not phone_numbers:
+        return jsonify({"status": "error", "message": "Phone numbers list is empty"}), 400
+    
+    # Send consent requests
+    results = send_consent_request(phone_numbers)
+    
+    return jsonify({
+        "status": "success",
+        "message": f"Consent requests sent",
+        "total_numbers": len(phone_numbers),
+        "successful_sends": len(results["success"]),
+        "failed_sends": len(results["failed"]),
+        "failures": results["failed"]
+    })
 
 @app.route('/send_survey', methods=['POST'])
 def send_survey_endpoint():
@@ -277,11 +473,23 @@ def participants():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM participants")
     rows = cursor.fetchall()
+    
+    # Get column names
+    column_names = [description[0] for description in cursor.description]
+    
+    # Create a list of dictionaries
+    participants_list = []
+    for row in rows:
+        participant_dict = {}
+        for i, value in enumerate(row):
+            participant_dict[column_names[i]] = value
+        participants_list.append(participant_dict)
+    
     conn.close()
     
     return {
         'status': 'success',
-        'data': [dict(zip([col[0] for col in cursor.description], row)) for row in rows]
+        'data': participants_list
     }
 
 @app.route('/clear_database', methods=['POST'])
@@ -351,6 +559,12 @@ def dashboard():
             color: #333;
             text-align: center;
         }
+        h2 {
+            color: #555;
+            margin-top: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
         .form-group {
             margin-bottom: 20px;
         }
@@ -359,7 +573,7 @@ def dashboard():
             margin-bottom: 5px;
             font-weight: bold;
         }
-        input[type="text"], input[type="url"], textarea {
+        input[type="text"], input[type="url"], textarea, input[type="file"] {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
@@ -374,6 +588,8 @@ def dashboard():
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
         }
         button:hover {
             background-color: #0056b3;
@@ -415,65 +631,158 @@ def dashboard():
         .form-row input {
             flex: 1;
         }
+        .checkbox-group {
+            margin: 10px 0;
+        }
+        .checkbox-group label {
+            display: inline;
+            font-weight: normal;
+            margin-left: 5px;
+        }
+        .preview-area {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        .preview-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .preview-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-right: 5px;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+            background-color: #f8f9fa;
+        }
+        .tab.active {
+            background-color: white;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📱 SMS Management Dashboard</h1>
         
-        <div class="section">
-            <h2>Send Consent Request</h2>
-            <div class="form-group">
-                <label for="phone">Phone Number (e.g., +16478941552):</label>
-                <input type="text" id="phone" placeholder="+1234567890">
-            </div>
-            <button onclick="sendConsent()">Send Consent Request</button>
+        <div class="tabs">
+            <div class="tab active" onclick="openTab(event, 'tab-single')">Single Number</div>
+            <div class="tab" onclick="openTab(event, 'tab-csv')">CSV Upload</div>
+            <div class="tab" onclick="openTab(event, 'tab-survey')">Send Survey</div>
+            <div class="tab" onclick="openTab(event, 'tab-manage')">Manage Data</div>
         </div>
         
-        <div class="section">
-            <h2>Send Survey Link</h2>
-            <div class="form-group">
-                <label for="surveyUrl">Survey URL:</label>
-                <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
-            </div>
-            <div class="form-group">
-                <label for="customMessage">Custom Message (optional):</label>
-                <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
-            </div>
-            <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
-        </div>
-        
-        <div class="section">
-            <h2>Manage Participants</h2>
-            <button onclick="viewParticipants()">View All Participants</button>
-            <div id="participantsTable" style="margin-top: 20px; display: none;">
-                <table id="participantsData" style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background-color: #f8f9fa;">
-                            <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
-                        </tr>
-                    </thead>
-                    <tbody id="participantsBody">
-                    </tbody>
-                </table>
+        <div id="tab-single" class="tab-content active">
+            <div class="section">
+                <h2>Send Consent Request to Single Number</h2>
+                <div class="form-group">
+                    <label for="phone">Phone Number (e.g., +16478941552):</label>
+                    <input type="text" id="phone" placeholder="+1234567890">
+                </div>
+                <button onclick="sendConsent()">Send Consent Request</button>
             </div>
         </div>
         
-        <div class="section">
-            <h2>Database Management</h2>
-            <p style="color: #6c757d; font-size: 14px;">⚠️ Danger Zone: These actions cannot be undone!</p>
-            <button class="danger-button" onclick="clearDatabase()">Clear All Data</button>
-            <button onclick="resetSurveySent()">Reset Survey Sent Status</button>
+        <div id="tab-csv" class="tab-content">
+            <div class="section">
+                <h2>Upload CSV with Phone Numbers</h2>
+                <div class="form-group">
+                    <label for="csvFile">Select a CSV file with phone numbers:</label>
+                    <input type="file" id="csvFile" accept=".csv">
+                    <p style="color: #6c757d; font-size: 14px; margin-top: 5px;">
+                        The system will look for columns with names containing "phone", "mobile", 
+                        "cell", "contact", "number", or "tel". If no matching columns are found, 
+                        it will use the first column.
+                    </p>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="sendImmediately">
+                    <label for="sendImmediately">Send consent requests immediately after upload</label>
+                </div>
+                <button onclick="uploadCSV()">Upload CSV</button>
+                
+                <div id="previewArea" class="preview-area">
+                    <div class="preview-header">Phone Numbers Preview:</div>
+                    <ul id="phonePreview" class="preview-list"></ul>
+                    <div id="previewControls" style="margin-top: 15px; display: none;">
+                        <button onclick="sendConsentToPreview()">Send Consent Requests to These Numbers</button>
+                    </div>
+                </div>
+            </div>
         </div>
         
-        <div class="section">
-            <h2>App Status</h2>
-            <button onclick="checkHealth()">Check App Health</button>
-            <div id="healthInfo" style="margin-top: 10px; display: none;">
-                <div id="healthStatus"></div>
+        <div id="tab-survey" class="tab-content">
+            <div class="section">
+                <h2>Send Survey Link</h2>
+                <div class="form-group">
+                    <label for="surveyUrl">Survey URL:</label>
+                    <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
+                </div>
+                <div class="form-group">
+                    <label for="customMessage">Custom Message (optional):</label>
+                    <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
+                </div>
+                <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
+            </div>
+        </div>
+        
+        <div id="tab-manage" class="tab-content">
+            <div class="section">
+                <h2>Manage Participants</h2>
+                <button onclick="viewParticipants()">View All Participants</button>
+                <div id="participantsTable" style="margin-top: 20px; display: none;">
+                    <table id="participantsData" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f8f9fa;">
+                                <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
+                            </tr>
+                        </thead>
+                        <tbody id="participantsBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>Database Management</h2>
+                <p style="color: #6c757d; font-size: 14px;">⚠️ Danger Zone: These actions cannot be undone!</p>
+                <button class="danger-button" onclick="clearDatabase()">Clear All Data</button>
+                <button onclick="resetSurveySent()">Reset Survey Sent Status</button>
+            </div>
+            
+            <div class="section">
+                <h2>App Status</h2>
+                <button onclick="checkHealth()">Check App Health</button>
+                <div id="healthInfo" style="margin-top: 10px; display: none;">
+                    <div id="healthStatus"></div>
+                </div>
             </div>
         </div>
         
@@ -482,6 +791,25 @@ def dashboard():
 
     <script>
         const API_BASE = window.location.origin;
+        let extractedPhoneNumbers = [];
+
+        function openTab(evt, tabName) {
+            // Hide all tab content
+            const tabContents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove("active");
+            }
+            
+            // Remove active class from all tabs
+            const tabs = document.getElementsByClassName("tab");
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove("active");
+            }
+            
+            // Show the selected tab content and add active class to the tab
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
 
         function showStatus(message, isSuccess = true) {
             const status = document.getElementById('status');
@@ -513,6 +841,106 @@ def dashboard():
                 showStatus(result.message, response.ok);
             } catch (error) {
                 showStatus('Error sending consent request: ' + error.message, false);
+            }
+        }
+
+        async function uploadCSV() {
+            const fileInput = document.getElementById('csvFile');
+            const sendImmediately = document.getElementById('sendImmediately').checked;
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showStatus('Please select a CSV file', false);
+                return;
+            }
+
+            const file = fileInput.files[0];
+            if (!file.name.endsWith('.csv')) {
+                showStatus('Please select a CSV file', false);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('send_immediately', sendImmediately);
+
+            try {
+                const response = await fetch(`${API_BASE}/upload_csv`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    if (sendImmediately) {
+                        showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_numbers} phone numbers`, true);
+                    } else {
+                        // Store the extracted phone numbers for later use
+                        extractedPhoneNumbers = result.phone_numbers;
+                        
+                        // Show preview
+                        const previewArea = document.getElementById('previewArea');
+                        const phonePreview = document.getElementById('phonePreview');
+                        const previewControls = document.getElementById('previewControls');
+                        
+                        // Clear previous preview
+                        phonePreview.innerHTML = '';
+                        
+                        // Add phone numbers to the preview
+                        if (extractedPhoneNumbers.length > 0) {
+                            extractedPhoneNumbers.forEach(phone => {
+                                const li = document.createElement('li');
+                                li.textContent = phone;
+                                phonePreview.appendChild(li);
+                            });
+                            
+                            previewControls.style.display = 'block';
+                        } else {
+                            const li = document.createElement('li');
+                            li.textContent = 'No valid phone numbers found in the CSV file.';
+                            phonePreview.appendChild(li);
+                            
+                            previewControls.style.display = 'none';
+                        }
+                        
+                        previewArea.style.display = 'block';
+                        showStatus(`Successfully extracted ${result.total} phone numbers from CSV`, true);
+                    }
+                } else {
+                    showStatus(result.message || 'Error processing CSV file', false);
+                }
+                
+            } catch (error) {
+                showStatus('Error uploading CSV: ' + error.message, false);
+            }
+        }
+
+        async function sendConsentToPreview() {
+            if (!extractedPhoneNumbers || extractedPhoneNumbers.length === 0) {
+                showStatus('No phone numbers to send consent requests to', false);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/send_bulk_consent`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        phone_numbers: extractedPhoneNumbers
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_numbers} phone numbers`, true);
+                } else {
+                    showStatus(result.message || 'Error sending consent requests', false);
+                }
+            } catch (error) {
+                showStatus('Error sending consent requests: ' + error.message, false);
             }
         }
 
