@@ -4,7 +4,7 @@ import re
 import csv
 import io
 from datetime import datetime
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify
 import requests
 
 # Initialize Flask app
@@ -815,34 +815,30 @@ def dashboard():
         </div>
         
         <div id="tab-manage" class="tab-content">
-<div class="section">
-    <h2>Manage Participants</h2>
-    <div style="margin-bottom: 15px;">
-        <button onclick="viewParticipants()">View All Participants</button>
-        <button onclick="exportResponses()">Export Data to CSV</button>
-    </div>
-    <div id="participantsTable" style="margin-top: 20px; display: none;">
-        <table id="participantsData" style="width: 100%; border-collapse: collapse;">
-            <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
-                </tr>
-            </thead>
-            <tbody id="participantsBody">
-            </tbody>
-        </table>
-    </div>
-</div>
+            <div class="section">
+                <h2>Manage Participants</h2>
+                <button onclick="viewParticipants()">View All Participants</button>
+                <div id="participantsTable" style="margin-top: 20px; display: none;">
+                    <table id="participantsData" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f8f9fa;">
+                                <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
+                            </tr>
+                        </thead>
+                        <tbody id="participantsBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             
             <div class="section">
                 <h2>Database Management</h2>
                 <p style="color: #6c757d; font-size: 14px;">⚠️ Danger Zone: These actions cannot be undone!</p>
                 <button class="danger-button" onclick="clearDatabase()">Clear All Data</button>
                 <button onclick="resetSurveySent()">Reset Survey Sent Status</button>
-                <button onclick="exportResponses()">Export Data to CSV</button>
             </div>
             
             <div class="section">
@@ -1145,102 +1141,11 @@ def dashboard():
                 showStatus('Error resetting survey status: ' + error.message, false);
             }
         }
-        function exportResponses() {
-    // Directly trigger download by navigating to the export endpoint
-    window.location.href = `${API_BASE}/export_responses`;
-    
-    // Show status message
-    showStatus('Generating CSV export. Download should begin shortly.', true);
-}
-
-function exportResponses() {
-    try {
-        // Show loading message
-        showStatus('Starting CSV export...', true);
-        
-        // Create a hidden iframe to handle the download
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        
-        // Set the iframe source to the export endpoint
-        iframe.src = `${API_BASE}/export_responses`;
-        
-        // Show success message after a short delay
-        setTimeout(() => {
-            showStatus('CSV export started. Check your downloads folder.', true);
-            // Remove the iframe after download starts
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 5000);
-        }, 1000);
-    } catch (error) {
-        showStatus('Error exporting data: ' + error.message, false);
-    }
-}
     </script>
 </body>
 </html>'''
 
 if __name__ == '__main__':
-  @app.route('/export_responses', methods=['GET'])
-def export_responses():
-    """Export all responses to a CSV file"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Get all participants
-        cursor.execute("SELECT * FROM participants")
-        participants = cursor.fetchall()
-        participant_columns = [description[0] for description in cursor.description]
-        
-        # Get all responses
-        cursor.execute("SELECT * FROM responses")
-        responses = cursor.fetchall()
-        response_columns = [description[0] for description in cursor.description]
-        
-        conn.close()
-        
-        # Create a CSV in memory
-        output = io.StringIO()
-        writer = csv.writer(output)
-        
-        # Write participants section
-        writer.writerow(['## PARTICIPANTS'])
-        writer.writerow(participant_columns)
-        for row in participants:
-            writer.writerow(row)
-        
-        # Add a separator
-        writer.writerow([])
-        writer.writerow(['## RESPONSES'])
-        
-        # Write responses section
-        writer.writerow(response_columns)
-        for row in responses:
-            writer.writerow(row)
-        
-        # Prepare response
-        output.seek(0)
-        
-        # Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"survey_data_{timestamp}.csv"
-        
-        # Return the CSV file
-        return Response(
-            output.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-    
-    except Exception as e:
-        print(f"Error exporting responses: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}, 500
-        
     # Initialize database
     init_database()
     
