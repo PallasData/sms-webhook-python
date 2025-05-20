@@ -842,6 +842,7 @@ def dashboard():
                 <p style="color: #6c757d; font-size: 14px;">⚠️ Danger Zone: These actions cannot be undone!</p>
                 <button class="danger-button" onclick="clearDatabase()">Clear All Data</button>
                 <button onclick="resetSurveySent()">Reset Survey Sent Status</button>
+                <button onclick="exportResponses()">Export Data to CSV</button>
             </div>
             
             <div class="section">
@@ -1151,60 +1152,94 @@ def dashboard():
     // Show status message
     showStatus('Generating CSV export. Download should begin shortly.', true);
 }
+
+function exportResponses() {
+    try {
+        // Show loading message
+        showStatus('Starting CSV export...', true);
+        
+        // Create a hidden iframe to handle the download
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        
+        // Set the iframe source to the export endpoint
+        iframe.src = `${API_BASE}/export_responses`;
+        
+        // Show success message after a short delay
+        setTimeout(() => {
+            showStatus('CSV export started. Check your downloads folder.', true);
+            // Remove the iframe after download starts
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 5000);
+        }, 1000);
+    } catch (error) {
+        showStatus('Error exporting data: ' + error.message, false);
+    }
+}
     </script>
 </body>
 </html>'''
 
 if __name__ == '__main__':
-    @app.route('/export_responses', methods=['GET'])
+  @app.route('/export_responses', methods=['GET'])
 def export_responses():
     """Export all responses to a CSV file"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        # Get all participants with their information
-        cursor.execute("""
-            SELECT p.phone_number, p.consent_status, p.email, p.survey_sent, 
-                   p.created_at, p.consent_timestamp, r.message_body, r.timestamp as response_timestamp
-            FROM participants p
-            LEFT JOIN responses r ON p.phone_number = r.phone_number
-            ORDER BY p.phone_number, r.timestamp
-        """)
+        # Get all participants
+        cursor.execute("SELECT * FROM participants")
+        participants = cursor.fetchall()
+        participant_columns = [description[0] for description in cursor.description]
         
-        rows = cursor.fetchall()
-        column_names = [description[0] for description in cursor.description]
+        # Get all responses
+        cursor.execute("SELECT * FROM responses")
+        responses = cursor.fetchall()
+        response_columns = [description[0] for description in cursor.description]
         
         conn.close()
-        
-        if not rows:
-            return jsonify({"status": "error", "message": "No data to export"}), 404
         
         # Create a CSV in memory
         output = io.StringIO()
         writer = csv.writer(output)
         
-        # Write header row
-        writer.writerow(column_names)
-        
-        # Write data rows
-        for row in rows:
+        # Write participants section
+        writer.writerow(['## PARTICIPANTS'])
+        writer.writerow(participant_columns)
+        for row in participants:
             writer.writerow(row)
         
-        # Prepare the output
+        # Add a separator
+        writer.writerow([])
+        writer.writerow(['## RESPONSES'])
+        
+        # Write responses section
+        writer.writerow(response_columns)
+        for row in responses:
+            writer.writerow(row)
+        
+        # Prepare response
         output.seek(0)
         
-        # Set headers for CSV download
+        # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"survey_data_{timestamp}.csv"
+        
+        # Return the CSV file
         return Response(
             output.getvalue(),
             mimetype="text/csv",
-            headers={"Content-disposition": f"attachment; filename=survey_responses_{timestamp}.csv"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     
     except Exception as e:
         print(f"Error exporting responses: {e}")
-        return jsonify({"status": "error", "message": f"Error generating CSV: {str(e)}"}), 500
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}, 500
         
     # Initialize database
     init_database()
