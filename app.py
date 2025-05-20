@@ -4,7 +4,7 @@ import re
 import csv
 import io
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 import requests
 
 # Initialize Flask app
@@ -816,9 +816,13 @@ def dashboard():
         
         <div id="tab-manage" class="tab-content">
             <div class="section">
-                <h2>Manage Participants</h2>
-                <button onclick="viewParticipants()">View All Participants</button>
-                <div id="participantsTable" style="margin-top: 20px; display: none;">
+                <div class="section">
+    <h2>Manage Participants</h2>
+    <div style="margin-bottom: 15px;">
+        <button onclick="viewParticipants()">View All Participants</button>
+        <button onclick="exportData()">Export Data to CSV</button>
+    </div>
+    <div id="participantsTable" style="margin-top: 20px; display: none;">
                     <table id="participantsData" style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr style="background-color: #f8f9fa;">
@@ -1141,11 +1145,92 @@ def dashboard():
                 showStatus('Error resetting survey status: ' + error.message, false);
             }
         }
+
+        function exportData() {
+    showStatus('Starting data export...', true);
+    
+    // Create a hidden iframe to trigger the download without navigating away
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    
+    // Set the source to the export endpoint
+    iframe.src = `${API_BASE}/export_data`;
+    
+    // Notify the user
+    setTimeout(() => {
+        showStatus('Download started. Check your downloads folder.', true);
+        
+        // Clean up the iframe after download has started
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 5000);
+    }, 1000);
+}
     </script>
 </body>
 </html>'''
 
 if __name__ == '__main__':
+    @app.route('/export_data', methods=['GET'])
+def export_data():
+    """Export all data to a CSV file"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Get all participants
+        cursor.execute("SELECT * FROM participants")
+        participants = cursor.fetchall()
+        participant_columns = [description[0] for description in cursor.description]
+        
+        # Get all responses
+        cursor.execute("SELECT * FROM responses")
+        responses = cursor.fetchall()
+        response_columns = [description[0] for description in cursor.description]
+        
+        conn.close()
+        
+        # Create a CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write participants section
+        writer.writerow(['## PARTICIPANTS'])
+        writer.writerow(participant_columns)
+        for row in participants:
+            writer.writerow(row)
+        
+        # Add a separator
+        writer.writerow([])
+        writer.writerow(['## RESPONSES'])
+        
+        # Write responses section
+        writer.writerow(response_columns)
+        for row in responses:
+            writer.writerow(row)
+        
+        # Prepare response
+        output.seek(0)
+        csv_data = output.getvalue()
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"survey_data_{timestamp}.csv"
+        
+        # Return the CSV file as a downloadable attachment
+        return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    
+    except Exception as e:
+        print(f"Error exporting data: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+        
     # Initialize database
     init_database()
     
