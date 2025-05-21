@@ -331,11 +331,13 @@ def send_survey_link(survey_url, custom_message=None):
         time.sleep(1)  # Rate limiting
 
 def process_csv_file(file_content):
-    """Process CSV file content and extract phone numbers and additional data"""
+    """Process CSV file content and extract phone numbers"""
     try:
         # Try to decode the file content as UTF-8
         if isinstance(file_content, bytes):
             file_content = file_content.decode('utf-8')
+        
+        print("CSV DEBUGGING: File content decoded successfully")
         
         # Use StringIO to create a file-like object
         csv_file = io.StringIO(file_content)
@@ -346,167 +348,84 @@ def process_csv_file(file_content):
         # Get all rows
         rows = list(reader)
         
+        print(f"CSV DEBUGGING: CSV has {len(rows)} rows (including header)")
+        
         if not rows:
             return {"status": "error", "message": "CSV file is empty"}
         
-        # First row is assumed to be header
-        headers = rows[0]
+        # Print the first few rows for debugging
+        print("CSV DEBUGGING: First 2 rows:")
+        for i, row in enumerate(rows[:2]):
+            print(f"  Row {i}: {row}")
         
-        # Find column indices for important fields
-        phone_idx = -1
-        calltime_idx = -1
-        vote_intent_idx = -1
-        gender_idx = -1
-        age_idx = -1
-        education_idx = -1
-        phone_type_idx = -1
-        region_idx = -1
-        notes_idx = -1
-        
-        # Look for columns by name
-        for i, header in enumerate(headers):
-            header_lower = header.lower()
-            if any(keyword in header_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
-                phone_idx = i
-            elif header_lower == 'calltime':
-                calltime_idx = i
-            elif header_lower == 'lastfedvoteintent':
-                vote_intent_idx = i
-            elif header_lower == 'gender':
-                gender_idx = i
-            elif header_lower == 'age':
-                age_idx = i
-            elif header_lower == 'education':
-                education_idx = i
-            elif header_lower == 'phonetype':
-                phone_type_idx = i
-            elif header_lower == 'region':
-                region_idx = i
-            elif header_lower == 'notes':
-                notes_idx = i
-        
-        # If we couldn't find a phone column, return error
-        if phone_idx == -1:
-            return {"status": "error", "message": "Could not identify a phone number column in CSV"}
-        
-        # Extract phone numbers and additional data from all rows
+        # Extract phone numbers
         phone_numbers = []
-        for row in rows[1:]:  # Skip header row
-            if len(row) <= phone_idx or not row[phone_idx].strip():
-                continue  # Skip rows with no phone number
-                
-            phone = row[phone_idx].strip()
-            if not is_valid_phone_number(phone):
-                continue  # Skip invalid phone numbers
-                
-            normalized_phone = normalize_phone_number(phone)
-            phone_numbers.append(normalized_phone)
+        
+        # Check the first row for headers
+        first_row = rows[0]
+        header_row = True
+        
+        print(f"CSV DEBUGGING: Headers: {first_row}")
+        
+        # Look for columns that might contain phone numbers
+        phone_col_indices = []
+        for i, header in enumerate(first_row):
+            header_lower = header.lower().strip()
+            print(f"CSV DEBUGGING: Checking header '{header}' (lower: '{header_lower}')")
+            if header_lower == 'phone_number' or any(keyword in header_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
+                phone_col_indices.append(i)
+                print(f"CSV DEBUGGING: Found potential phone column: '{header}' at index {i}")
+        
+        # If we couldn't find any phone columns, maybe the first row isn't a header
+        if not phone_col_indices:
+            print("CSV DEBUGGING: No phone columns found in header row")
+            # Check if the first row might contain phone numbers itself
+            for i, cell in enumerate(first_row):
+                cell_value = str(cell).strip()
+                print(f"CSV DEBUGGING: Testing if '{cell_value}' is a valid phone number")
+                if cell_value and is_valid_phone_number(cell_value):
+                    print(f"CSV DEBUGGING: Found valid phone number in first row: {cell_value}")
+                    header_row = False
+                    phone_col_indices.append(i)
+                    break
+        
+        # If we still couldn't find phone columns, try the first column
+        if not phone_col_indices:
+            print("CSV DEBUGGING: Using first column as default phone column")
+            phone_col_indices.append(0)
+        
+        print(f"CSV DEBUGGING: Using columns at indices {phone_col_indices} for phone numbers")
+        print(f"CSV DEBUGGING: Treating first row as header: {header_row}")
+        
+        # Start from the appropriate row (skip header if we identified one)
+        start_row = 1 if header_row else 0
+        
+        # Extract phone numbers from identified columns
+        valid_phones_found = 0
+        invalid_phones_found = 0
+        
+        for row_idx, row in enumerate(rows[start_row:], start=start_row):
+            phone_found = False
+            for col_idx in phone_col_indices:
+                if col_idx < len(row):
+                    cell_value = str(row[col_idx]).strip()
+                    if cell_value:
+                        is_valid = is_valid_phone_number(cell_value)
+                        print(f"CSV DEBUGGING: Row {row_idx}, Column {col_idx}: '{cell_value}' Valid: {is_valid}")
+                        if is_valid:
+                            normalized = normalize_phone_number(cell_value)
+                            print(f"CSV DEBUGGING: Normalized: {normalized}")
+                            phone_numbers.append(normalized)
+                            valid_phones_found += 1
+                            phone_found = True
+                            break
+                        else:
+                            invalid_phones_found += 1
             
-            # Add to database with additional fields
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            try:
-                # Check if phone number already exists
-                cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (normalized_phone,))
-                existing = cursor.fetchone()
-                
-                if existing:
-                    # Update with additional fields if they're present
-                    update_query = "UPDATE participants SET "
-                    update_values = []
-                    
-                    if calltime_idx >= 0 and calltime_idx < len(row) and row[calltime_idx].strip():
-                        update_query += "calltime = ?, "
-                        update_values.append(row[calltime_idx].strip())
-                    
-                    if vote_intent_idx >= 0 and vote_intent_idx < len(row) and row[vote_intent_idx].strip():
-                        update_query += "last_fed_vote_intent = ?, "
-                        update_values.append(row[vote_intent_idx].strip())
-                    
-                    if gender_idx >= 0 and gender_idx < len(row) and row[gender_idx].strip():
-                        update_query += "gender = ?, "
-                        update_values.append(row[gender_idx].strip())
-                    
-                    if age_idx >= 0 and age_idx < len(row) and row[age_idx].strip():
-                        update_query += "age = ?, "
-                        update_values.append(row[age_idx].strip())
-                    
-                    if education_idx >= 0 and education_idx < len(row) and row[education_idx].strip():
-                        update_query += "education = ?, "
-                        update_values.append(row[education_idx].strip())
-                    
-                    if phone_type_idx >= 0 and phone_type_idx < len(row) and row[phone_type_idx].strip():
-                        update_query += "phone_type = ?, "
-                        update_values.append(row[phone_type_idx].strip())
-                    
-                    if region_idx >= 0 and region_idx < len(row) and row[region_idx].strip():
-                        update_query += "region = ?, "
-                        update_values.append(row[region_idx].strip())
-                    
-                    if notes_idx >= 0 and notes_idx < len(row) and row[notes_idx].strip():
-                        update_query += "notes = ?, "
-                        update_values.append(row[notes_idx].strip())
-                    
-                    # Remove trailing comma and space
-                    if update_values:
-                        update_query = update_query[:-2]
-                        update_query += " WHERE phone_number = ?"
-                        update_values.append(normalized_phone)
-                        cursor.execute(update_query, update_values)
-                else:
-                    # Insert new participant
-                    insert_query = "INSERT INTO participants (phone_number"
-                    values_part = "?"
-                    insert_values = [normalized_phone]
-                    
-                    if calltime_idx >= 0 and calltime_idx < len(row) and row[calltime_idx].strip():
-                        insert_query += ", calltime"
-                        values_part += ", ?"
-                        insert_values.append(row[calltime_idx].strip())
-                    
-                    if vote_intent_idx >= 0 and vote_intent_idx < len(row) and row[vote_intent_idx].strip():
-                        insert_query += ", last_fed_vote_intent"
-                        values_part += ", ?"
-                        insert_values.append(row[vote_intent_idx].strip())
-                    
-                    if gender_idx >= 0 and gender_idx < len(row) and row[gender_idx].strip():
-                        insert_query += ", gender"
-                        values_part += ", ?"
-                        insert_values.append(row[gender_idx].strip())
-                    
-                    if age_idx >= 0 and age_idx < len(row) and row[age_idx].strip():
-                        insert_query += ", age"
-                        values_part += ", ?"
-                        insert_values.append(row[age_idx].strip())
-                    
-                    if education_idx >= 0 and education_idx < len(row) and row[education_idx].strip():
-                        insert_query += ", education"
-                        values_part += ", ?"
-                        insert_values.append(row[education_idx].strip())
-                    
-                    if phone_type_idx >= 0 and phone_type_idx < len(row) and row[phone_type_idx].strip():
-                        insert_query += ", phone_type"
-                        values_part += ", ?"
-                        insert_values.append(row[phone_type_idx].strip())
-                    
-                    if region_idx >= 0 and region_idx < len(row) and row[region_idx].strip():
-                        insert_query += ", region"
-                        values_part += ", ?"
-                        insert_values.append(row[region_idx].strip())
-                    
-                    if notes_idx >= 0 and notes_idx < len(row) and row[notes_idx].strip():
-                        insert_query += ", notes"
-                        values_part += ", ?"
-                        insert_values.append(row[notes_idx].strip())
-                    
-                    insert_query += ") VALUES (" + values_part + ")"
-                    cursor.execute(insert_query, insert_values)
-                
-                conn.commit()
-            except Exception as e:
-                print(f"Error saving participant {normalized_phone}: {e}")
-            finally:
-                conn.close()
+            if not phone_found and row_idx < start_row + 5:  # Only log first few rows to avoid flooding logs
+                print(f"CSV DEBUGGING: No valid phone number found in row {row_idx}")
+        
+        print(f"CSV DEBUGGING: Found {valid_phones_found} valid and {invalid_phones_found} invalid phone numbers")
         
         # Remove duplicates while preserving order
         unique_phones = []
@@ -516,13 +435,16 @@ def process_csv_file(file_content):
                 seen.add(phone)
                 unique_phones.append(phone)
         
+        print(f"CSV DEBUGGING: Returning {len(unique_phones)} unique phone numbers")
+        
         return {
-            "status": "success",
+            "status": "success", 
             "phone_numbers": unique_phones,
             "total": len(unique_phones)
         }
     
     except Exception as e:
+        print(f"CSV DEBUGGING ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"Error processing CSV: {str(e)}"}
