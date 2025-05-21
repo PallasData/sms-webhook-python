@@ -317,13 +317,6 @@ def is_valid_phone_number(phone):
     
     # Check if it's a valid US/CA format (10 digits, optionally starting with 1)
     return re.match(r'^1?\d{10}$', clean_phone) is not None
-    
-    # Check if it's a valid international format (starting with +)
-    if clean_phone.startswith('+'):
-        return re.match(r'^\+\d{10,15}$', clean_phone) is not None
-    
-    # Default to False for anything else
-    return False
 
 def send_survey_link(survey_url, custom_message=None):
     """Send survey link to consented participants"""
