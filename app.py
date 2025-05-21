@@ -305,18 +305,18 @@ def send_consent_request(phone_numbers):
 
 def is_valid_phone_number(phone):
     """
-    Basic validation for phone numbers
-    Accepts formats like: +1234567890, 1234567890, etc.
+    Basic validation for phone numbers - extremely simple version
+    Accepts almost any reasonable phone number format
     """
-    # Remove spaces, dashes, and parentheses
-    clean_phone = re.sub(r'[\s\-\(\)]', '', phone)
+    # Convert to string if not already
+    if not isinstance(phone, str):
+        phone = str(phone)
     
-    # Check if it's a valid international format (starting with +)
-    if clean_phone.startswith('+'):
-        return re.match(r'^\+\d{10,15}$', clean_phone) is not None
+    # Remove any non-digit characters
+    clean_phone = re.sub(r'\D', '', phone)
     
-    # Check if it's a valid US/CA format (10 digits, optionally starting with 1)
-    return re.match(r'^1?\d{10}$', clean_phone) is not None
+    # If we have at least 7 digits, consider it valid
+    return len(clean_phone) >= 7
 
 def send_survey_link(survey_url, custom_message=None):
     """Send survey link to consented participants"""
