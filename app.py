@@ -54,39 +54,6 @@ def init_database():
     conn.commit()
     conn.close()
 
-def migrate_database():
-    """Add missing columns to participants table if they don't exist"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Get existing columns
-    cursor.execute("PRAGMA table_info(participants)")
-    existing_columns = [col[1] for col in cursor.fetchall()]
-    
-    # Add missing columns if needed
-    columns_to_add = [
-        ("calltime", "TEXT"),
-        ("last_fed_vote_intent", "TEXT"),
-        ("gender", "TEXT"),
-        ("age", "TEXT"),
-        ("education", "TEXT"),
-        ("phone_type", "TEXT"),
-        ("region", "TEXT"),
-        ("notes", "TEXT")
-    ]
-    
-    for col_name, col_type in columns_to_add:
-        if col_name not in existing_columns:
-            try:
-                cursor.execute(f"ALTER TABLE participants ADD COLUMN {col_name} {col_type}")
-                print(f"Added column {col_name} to participants table")
-            except Exception as e:
-                print(f"Error adding column {col_name}: {e}")
-    
-    conn.commit()
-    conn.close()
-
-# Your next function would be here (likely send_sms)
 def send_sms(to_number, message_body):
     """Send SMS using Twilio API"""
     account_sid = os.getenv('TWILIO_ACCOUNT_SID')
@@ -305,18 +272,30 @@ def send_consent_request(phone_numbers):
 
 def is_valid_phone_number(phone):
     """
-    Basic validation for phone numbers - extremely simple version
-    Accepts almost any reasonable phone number format
+    Basic validation for phone numbers
+    Accepts formats like: +1234567890, 1234567890, etc.
     """
-    # Convert to string if not already
-    if not isinstance(phone, str):
-        phone = str(phone)
+    # Remove spaces, dashes, and parentheses
+    clean_phone = re.sub(r'[\s\-\(\)]', '', phone)
     
-    # Remove any non-digit characters
-    clean_phone = re.sub(r'\D', '', phone)
+    # If it's just digits and the right length for a phone number, accept it
+    if clean_phone.isdigit():
+        # 10 digits is a standard North American number
+        if len(clean_phone) == 10:
+            return True
+        # 11 digits with a leading 1 is also a standard NA number
+        if len(clean_phone) == 11 and clean_phone.startswith('1'):
+            return True
+        # Some international numbers might be longer
+        if 8 <= len(clean_phone) <= 15:
+            return True
     
-    # If we have at least 7 digits, consider it valid
-    return len(clean_phone) >= 7
+    # Check if it's a valid international format (starting with +)
+    if clean_phone.startswith('+'):
+        return re.match(r'^\+\d{10,15}$', clean_phone) is not None
+    
+    # Default to False for anything else
+    return False
 
 def send_survey_link(survey_url, custom_message=None):
     """Send survey link to consented participants"""
@@ -352,11 +331,13 @@ def send_survey_link(survey_url, custom_message=None):
         time.sleep(1)  # Rate limiting
 
 def process_csv_file(file_content):
-    """Process CSV file content and extract phone numbers and additional data"""
+    """Process CSV file content and extract phone numbers"""
     try:
         # Try to decode the file content as UTF-8
         if isinstance(file_content, bytes):
             file_content = file_content.decode('utf-8')
+        
+        print("CSV DEBUGGING: File content decoded successfully")
         
         # Use StringIO to create a file-like object
         csv_file = io.StringIO(file_content)
@@ -367,149 +348,94 @@ def process_csv_file(file_content):
         # Get all rows
         rows = list(reader)
         
+        print(f"CSV DEBUGGING: CSV has {len(rows)} rows (including header)")
+        
         if not rows:
             return {"status": "error", "message": "CSV file is empty"}
         
-        # Extract phone numbers and additional data
+        # Print the first few rows for debugging
+        print("CSV DEBUGGING: First 2 rows:")
+        for i, row in enumerate(rows[:2]):
+            print(f"  Row {i}: {row}")
+        
+        # Extract phone numbers
         phone_numbers = []
         
-        # Get headers from first row
-        headers = rows[0]
-        headers_lower = [h.lower().strip() for h in headers]
+        # Check the first row for headers
+        first_row = rows[0]
+        header_row = True
         
-        # Find column indices for key fields
-        phone_idx = -1
-        calltime_idx = -1
-        vote_intent_idx = -1
-        gender_idx = -1
-        age_idx = -1
-        education_idx = -1
-        phone_type_idx = -1
-        region_idx = -1
-        notes_idx = -1
+        print(f"CSV DEBUGGING: Headers: {first_row}")
         
-        # Map column names to indices
-        for i, header in enumerate(headers_lower):
-            if header == 'phone_number' or any(keyword in header for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
-                phone_idx = i
-                print(f"Found phone column at index {i}: {headers[i]}")
-            elif header == 'calltime':
-                calltime_idx = i
-                print(f"Found calltime column at index {i}: {headers[i]}")
-            elif header == 'lastfedvoteintent':
-                vote_intent_idx = i
-                print(f"Found lastfedvoteintent column at index {i}: {headers[i]}")
-            elif header == 'gender':
-                gender_idx = i
-                print(f"Found gender column at index {i}: {headers[i]}")
-            elif header == 'age':
-                age_idx = i
-                print(f"Found age column at index {i}: {headers[i]}")
-            elif header == 'education':
-                education_idx = i
-                print(f"Found education column at index {i}: {headers[i]}")
-            elif header == 'phonetype':
-                phone_type_idx = i
-                print(f"Found phonetype column at index {i}: {headers[i]}")
-            elif header == 'region':
-                region_idx = i
-                print(f"Found region column at index {i}: {headers[i]}")
-            elif header == 'notes':
-                notes_idx = i
-                print(f"Found notes column at index {i}: {headers[i]}")
+        # Look for columns that might contain phone numbers
+        phone_col_indices = []
+        for i, header in enumerate(first_row):
+            header_lower = header.lower().strip()
+            print(f"CSV DEBUGGING: Checking header '{header}' (lower: '{header_lower}')")
+            if header_lower == 'phone_number' or any(keyword in header_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
+                phone_col_indices.append(i)
+                print(f"CSV DEBUGGING: Found potential phone column: '{header}' at index {i}")
         
-        # If we couldn't find a phone column, use the first column
-        if phone_idx == -1:
-            phone_idx = 0
-            print(f"No phone column found, using first column: {headers[0]}")
+        # If we couldn't find any phone columns, maybe the first row isn't a header
+        if not phone_col_indices:
+            print("CSV DEBUGGING: No phone columns found in header row")
+            # Check if the first row might contain phone numbers itself
+            for i, cell in enumerate(first_row):
+                cell_value = str(cell).strip()
+                print(f"CSV DEBUGGING: Testing if '{cell_value}' is a valid phone number")
+                if cell_value and is_valid_phone_number(cell_value):
+                    print(f"CSV DEBUGGING: Found valid phone number in first row: {cell_value}")
+                    header_row = False
+                    phone_col_indices.append(i)
+                    break
         
-        # Process each row starting from the second row (skip headers)
-        for row in rows[1:]:
-            if phone_idx >= len(row) or not row[phone_idx].strip():
-                continue  # Skip if no phone number
+        # If we still couldn't find phone columns, try the first column
+        if not phone_col_indices:
+            print("CSV DEBUGGING: Using first column as default phone column")
+            phone_col_indices.append(0)
+        
+        print(f"CSV DEBUGGING: Using columns at indices {phone_col_indices} for phone numbers")
+        print(f"CSV DEBUGGING: Treating first row as header: {header_row}")
+        
+        # Start from the appropriate row (skip header if we identified one)
+        start_row = 1 if header_row else 0
+        
+        # Extract phone numbers from identified columns
+        valid_phones_found = 0
+        invalid_phones_found = 0
+        
+        for row_idx, row in enumerate(rows[start_row:], start=start_row):
+            phone_found = False
+            for col_idx in phone_col_indices:
+                if col_idx < len(row):
+                    cell_value = str(row[col_idx]).strip()
+                    if cell_value:
+                        is_valid = is_valid_phone_number(cell_value)
+                        print(f"CSV DEBUGGING: Row {row_idx}, Column {col_idx}: '{cell_value}' Valid: {is_valid}")
+                        if is_valid:
+                            normalized = normalize_phone_number(cell_value)
+                            print(f"CSV DEBUGGING: Normalized: {normalized}")
+                            phone_numbers.append(normalized)
+                            valid_phones_found += 1
+                            phone_found = True
+                            break
+                        else:
+                            invalid_phones_found += 1
             
-            # Extract phone number
-            phone = row[phone_idx].strip()
-            if not is_valid_phone_number(phone):
-                continue  # Skip invalid phone numbers
-            
-            normalized_phone = normalize_phone_number(phone)
-            phone_numbers.append(normalized_phone)
-            
-            # Connect to database
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            try:
-                # Get additional data from other columns
-                calltime = row[calltime_idx].strip() if calltime_idx >= 0 and calltime_idx < len(row) else None
-                vote_intent = row[vote_intent_idx].strip() if vote_intent_idx >= 0 and vote_intent_idx < len(row) else None
-                gender = row[gender_idx].strip() if gender_idx >= 0 and gender_idx < len(row) else None
-                age = row[age_idx].strip() if age_idx >= 0 and age_idx < len(row) else None
-                education = row[education_idx].strip() if education_idx >= 0 and education_idx < len(row) else None
-                phone_type = row[phone_type_idx].strip() if phone_type_idx >= 0 and phone_type_idx < len(row) else None
-                region = row[region_idx].strip() if region_idx >= 0 and region_idx < len(row) else None
-                notes = row[notes_idx].strip() if notes_idx >= 0 and notes_idx < len(row) else None
-                
-                # Check if this phone number already exists
-                cursor.execute("SELECT phone_number FROM participants WHERE phone_number = ?", (normalized_phone,))
-                existing = cursor.fetchone()
-                
-                if existing:
-                    # Update existing record with new data
-                    cursor.execute('''
-                        UPDATE participants SET
-                        calltime = ?,
-                        last_fed_vote_intent = ?,
-                        gender = ?,
-                        age = ?,
-                        education = ?,
-                        phone_type = ?,
-                        region = ?,
-                        notes = ?
-                        WHERE phone_number = ?
-                    ''', (
-                        calltime,
-                        vote_intent,
-                        gender,
-                        age,
-                        education, 
-                        phone_type,
-                        region,
-                        notes,
-                        normalized_phone
-                    ))
-                else:
-                    # Insert new record with all data
-                    cursor.execute('''
-                        INSERT INTO participants
-                        (phone_number, calltime, last_fed_vote_intent, gender, age, education, phone_type, region, notes)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        normalized_phone,
-                        calltime,
-                        vote_intent,
-                        gender,
-                        age,
-                        education,
-                        phone_type,
-                        region,
-                        notes
-                    ))
-                
-                conn.commit()
-            except Exception as e:
-                print(f"Error saving data for {normalized_phone}: {e}")
-            finally:
-                conn.close()
+            if not phone_found and row_idx < start_row + 5:  # Only log first few rows to avoid flooding logs
+                print(f"CSV DEBUGGING: No valid phone number found in row {row_idx}")
         
-        # Remove duplicates from phone numbers list
+        print(f"CSV DEBUGGING: Found {valid_phones_found} valid and {invalid_phones_found} invalid phone numbers")
+        
+        # Remove duplicates while preserving order
         unique_phones = []
         seen = set()
         for phone in phone_numbers:
             if phone not in seen:
                 seen.add(phone)
                 unique_phones.append(phone)
+        
+        print(f"CSV DEBUGGING: Returning {len(unique_phones)} unique phone numbers")
         
         return {
             "status": "success", 
@@ -518,6 +444,7 @@ def process_csv_file(file_content):
         }
     
     except Exception as e:
+        print(f"CSV DEBUGGING ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"Error processing CSV: {str(e)}"}
@@ -1476,7 +1403,6 @@ def dashboard():
 if __name__ == '__main__':
     # Initialize database
     init_database()
-    migrate_database() 
     
     # Get port from environment (for cloud deployment)
     port = int(os.environ.get('PORT', 5000))
