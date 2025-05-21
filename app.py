@@ -278,12 +278,24 @@ def is_valid_phone_number(phone):
     # Remove spaces, dashes, and parentheses
     clean_phone = re.sub(r'[\s\-\(\)]', '', phone)
     
+    # If it's just digits and the right length for a phone number, accept it
+    if clean_phone.isdigit():
+        # 10 digits is a standard North American number
+        if len(clean_phone) == 10:
+            return True
+        # 11 digits with a leading 1 is also a standard NA number
+        if len(clean_phone) == 11 and clean_phone.startswith('1'):
+            return True
+        # Some international numbers might be longer
+        if 8 <= len(clean_phone) <= 15:
+            return True
+    
     # Check if it's a valid international format (starting with +)
     if clean_phone.startswith('+'):
         return re.match(r'^\+\d{10,15}$', clean_phone) is not None
     
-    # Check if it's a valid US/CA format (10 digits, optionally starting with 1)
-    return re.match(r'^1?\d{10}$', clean_phone) is not None
+    # Default to False for anything else
+    return False
 
 def send_survey_link(survey_url, custom_message=None):
     """Send survey link to consented participants"""
