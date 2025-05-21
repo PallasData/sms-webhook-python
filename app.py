@@ -88,8 +88,6 @@ def migrate_database():
 
 # Your next function would be here (likely send_sms)
 def send_sms(to_number, message_body):
-
-def send_sms(to_number, message_body):
     """Send SMS using Twilio API"""
     account_sid = os.getenv('TWILIO_ACCOUNT_SID')
     auth_token = os.getenv('TWILIO_AUTH_TOKEN')
