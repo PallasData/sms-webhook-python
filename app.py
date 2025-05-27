@@ -1108,6 +1108,64 @@ def export_data():
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/participants')
+def participants():
+    """Get all participants with proper error handling"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if participants table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='participants'")
+        if not cursor.fetchone():
+            return jsonify({
+                'status': 'success',
+                'data': [],
+                'message': 'No participants table found - database may be empty'
+            })
+        
+        cursor.execute("SELECT * FROM participants ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        
+        # Get column names
+        column_names = [description[0] for description in cursor.description]
+        
+        # Create a list of dictionaries
+        participants_list = []
+        for row in rows:
+            participant_dict = {}
+            for i, value in enumerate(row):
+                participant_dict[column_names[i]] = value
+            participants_list.append(participant_dict)
+        
+        return jsonify({
+            'status': 'success',
+            'data': participants_list,
+            'count': len(participants_list)
+        })
+        
+    except sqlite3.Error as e:
+        print(f"Database error in participants endpoint: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Database error: {str(e)}',
+            'data': []
+        }), 500
+        
+    except Exception as e:
+        print(f"General error in participants endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': f'Server error: {str(e)}',
+            'data': []
+        }), 500
+        
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 @app.route('/')
 def dashboard():
     """Serve the dashboard HTML"""
