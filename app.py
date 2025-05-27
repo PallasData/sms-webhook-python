@@ -490,6 +490,212 @@ def store_participants_with_data(participants_data):
     
     return results
 
+def search_participants(filters=None):
+    """
+    Search participants based on various filters
+    Returns participants matching the criteria
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Base query - only consented participants
+    base_query = """
+        SELECT phone_number, consent_status, email, calltime, last_fed_vote_intent, 
+               gender, age, education, phone_type, region, notes, survey_sent, created_at
+        FROM participants 
+        WHERE consent_status = 'consented'
+    """
+    
+    conditions = []
+    params = []
+    
+    if filters:
+        # Gender filter
+        if filters.get('gender'):
+            conditions.append("LOWER(gender) = LOWER(?)")
+            params.append(filters['gender'])
+        
+        # Age filter (can be range or specific)
+        if filters.get('age_min'):
+            # Handle age as number for range queries
+            conditions.append("CAST(age AS INTEGER) >= ?")
+            params.append(int(filters['age_min']))
+        
+        if filters.get('age_max'):
+            conditions.append("CAST(age AS INTEGER) <= ?")
+            params.append(int(filters['age_max']))
+        
+        if filters.get('age_exact'):
+            conditions.append("age = ?")
+            params.append(filters['age_exact'])
+        
+        # Region filter
+        if filters.get('region'):
+            conditions.append("LOWER(region) LIKE LOWER(?)")
+            params.append(f"%{filters['region']}%")
+        
+        # Education filter
+        if filters.get('education'):
+            conditions.append("LOWER(education) LIKE LOWER(?)")
+            params.append(f"%{filters['education']}%")
+        
+        # Phone type filter
+        if filters.get('phone_type'):
+            conditions.append("LOWER(phone_type) = LOWER(?)")
+            params.append(filters['phone_type'])
+        
+        # Vote intent filter
+        if filters.get('vote_intent'):
+            conditions.append("LOWER(last_fed_vote_intent) LIKE LOWER(?)")
+            params.append(f"%{filters['vote_intent']}%")
+        
+        # Email filter (has email or not)
+        if filters.get('has_email') is not None:
+            if filters['has_email']:
+                conditions.append("email IS NOT NULL AND email != ''")
+            else:
+                conditions.append("(email IS NULL OR email = '')")
+        
+        # Survey sent filter
+        if filters.get('survey_sent') is not None:
+            conditions.append("survey_sent = ?")
+            params.append(1 if filters['survey_sent'] else 0)
+        
+        # Date range filter
+        if filters.get('created_after'):
+            conditions.append("created_at >= ?")
+            params.append(filters['created_after'])
+        
+        if filters.get('created_before'):
+            conditions.append("created_at <= ?")
+            params.append(filters['created_before'])
+    
+    # Combine conditions
+    if conditions:
+        query = base_query + " AND " + " AND ".join(conditions)
+    else:
+        query = base_query
+    
+    query += " ORDER BY created_at DESC"
+    
+    try:
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        # Get column names
+        column_names = [description[0] for description in cursor.description]
+        
+        # Create list of dictionaries
+        participants = []
+        for row in rows:
+            participant = {}
+            for i, value in enumerate(row):
+                participant[column_names[i]] = value
+            participants.append(participant)
+        
+        return {
+            "status": "success",
+            "participants": participants,
+            "count": len(participants)
+        }
+        
+    except Exception as e:
+        print(f"Error searching participants: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "participants": [],
+            "count": 0
+        }
+    finally:
+        conn.close()
+
+def send_targeted_survey(survey_url, phone_numbers, custom_message=None):
+    """Send survey link to specific phone numbers"""
+    if not phone_numbers:
+        return {"status": "error", "message": "No phone numbers provided"}
+    
+    message = custom_message or f"Hi! Here's your survey link: {survey_url} Thank you for participating!"
+    
+    results = {"success": [], "failed": []}
+    
+    for phone in phone_numbers:
+        if send_sms(phone, message):
+            results["success"].append(phone)
+            
+            # Mark as survey sent
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "UPDATE participants SET survey_sent = 1 WHERE phone_number = ?",
+                    (phone,)
+                )
+                conn.commit()
+            except Exception as e:
+                print(f"Error updating survey_sent status for {phone}: {e}")
+            finally:
+                conn.close()
+        else:
+            results["failed"].append({"phone": phone, "reason": "Failed to send SMS"})
+        
+        import time
+        time.sleep(1)  # Rate limiting
+    
+    return results
+
+def get_filter_options():
+    """Get available filter options from the database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # Get unique values for dropdown options
+        filter_options = {}
+        
+        # Gender options
+        cursor.execute("SELECT DISTINCT gender FROM participants WHERE gender IS NOT NULL AND gender != '' ORDER BY gender")
+        filter_options['genders'] = [row[0] for row in cursor.fetchall()]
+        
+        # Region options
+        cursor.execute("SELECT DISTINCT region FROM participants WHERE region IS NOT NULL AND region != '' ORDER BY region")
+        filter_options['regions'] = [row[0] for row in cursor.fetchall()]
+        
+        # Education options
+        cursor.execute("SELECT DISTINCT education FROM participants WHERE education IS NOT NULL AND education != '' ORDER BY education")
+        filter_options['education_levels'] = [row[0] for row in cursor.fetchall()]
+        
+        # Phone type options
+        cursor.execute("SELECT DISTINCT phone_type FROM participants WHERE phone_type IS NOT NULL AND phone_type != '' ORDER BY phone_type")
+        filter_options['phone_types'] = [row[0] for row in cursor.fetchall()]
+        
+        # Vote intent options
+        cursor.execute("SELECT DISTINCT last_fed_vote_intent FROM participants WHERE last_fed_vote_intent IS NOT NULL AND last_fed_vote_intent != '' ORDER BY last_fed_vote_intent")
+        filter_options['vote_intents'] = [row[0] for row in cursor.fetchall()]
+        
+        # Age range
+        cursor.execute("SELECT MIN(CAST(age AS INTEGER)), MAX(CAST(age AS INTEGER)) FROM participants WHERE age IS NOT NULL AND age != '' AND age GLOB '[0-9]*'")
+        age_range = cursor.fetchone()
+        filter_options['age_range'] = {
+            'min': age_range[0] if age_range[0] else 18,
+            'max': age_range[1] if age_range[1] else 100
+        }
+        
+        return {
+            "status": "success",
+            "options": filter_options
+        }
+        
+    except Exception as e:
+        print(f"Error getting filter options: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "options": {}
+        }
+    finally:
+        conn.close()
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Handle Twilio webhook"""
@@ -668,6 +874,73 @@ def participants():
         'status': 'success',
         'data': participants_list
     }
+
+@app.route('/search_participants', methods=['POST'])
+def search_participants_endpoint():
+    """Search participants based on filters"""
+    try:
+        data = request.get_json() or {}
+        filters = data.get('filters', {})
+        
+        # Clean up empty filter values
+        cleaned_filters = {}
+        for key, value in filters.items():
+            if value is not None and str(value).strip() != '':
+                cleaned_filters[key] = value
+        
+        result = search_participants(cleaned_filters if cleaned_filters else None)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "message": str(e),
+            "participants": [],
+            "count": 0
+        }), 500
+
+@app.route('/filter_options', methods=['GET'])
+def get_filter_options_endpoint():
+    """Get available filter options"""
+    try:
+        result = get_filter_options()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "options": {}
+        }), 500
+
+@app.route('/send_targeted_survey', methods=['POST'])
+def send_targeted_survey_endpoint():
+    """Send survey to targeted participants"""
+    try:
+        data = request.get_json()
+        
+        survey_url = data.get('survey_url')
+        phone_numbers = data.get('phone_numbers', [])
+        custom_message = data.get('custom_message')
+        
+        if not survey_url:
+            return jsonify({"status": "error", "message": "Survey URL is required"}), 400
+        
+        if not phone_numbers:
+            return jsonify({"status": "error", "message": "No participants selected"}), 400
+        
+        results = send_targeted_survey(survey_url, phone_numbers, custom_message)
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Survey sent to {len(results['success'])} participants",
+            "successful_sends": len(results['success']),
+            "failed_sends": len(results['failed']),
+            "failures": results['failed']
+        })
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/clear_database', methods=['POST'])
 def clear_database():
@@ -987,20 +1260,183 @@ def dashboard():
             </div>
         </div>
         
-        <div id="tab-survey" class="tab-content">
-            <div class="section">
-                <h2>Send Survey Link</h2>
-                <div class="form-group">
-                    <label for="surveyUrl">Survey URL:</label>
-                    <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
+        <!-- Enhanced Survey Tab Content -->
+<div id="tab-survey" class="tab-content">
+    <div class="section">
+        <h2>Send Survey Link</h2>
+        
+        <!-- Survey Details -->
+        <div class="form-group">
+            <label for="surveyUrl">Survey URL:</label>
+            <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
+        </div>
+        <div class="form-group">
+            <label for="customMessage">Custom Message (optional):</label>
+            <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
+        </div>
+        
+        <!-- Survey Target Selection -->
+        <div style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
+            <h3 style="margin-top: 0;">Target Audience</h3>
+            
+            <div class="form-row" style="margin-bottom: 15px;">
+                <button type="button" onclick="toggleTargetingMode('all')" id="targetAll" class="targeting-btn active">Send to All Consented</button>
+                <button type="button" onclick="toggleTargetingMode('search')" id="targetSearch" class="targeting-btn">Search & Filter</button>
+            </div>
+            
+            <!-- Search Interface (Hidden by default) -->
+            <div id="searchInterface" style="display: none;">
+                <div class="search-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label for="filterGender">Gender:</label>
+                        <select id="filterGender">
+                            <option value="">Any</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="filterRegion">Region:</label>
+                        <select id="filterRegion">
+                            <option value="">Any</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="filterEducation">Education:</label>
+                        <select id="filterEducation">
+                            <option value="">Any</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="filterPhoneType">Phone Type:</label>
+                        <select id="filterPhoneType">
+                            <option value="">Any</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="filterVoteIntent">Voting Intent:</label>
+                        <select id="filterVoteIntent">
+                            <option value="">Any</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="filterSurveySent">Survey Status:</label>
+                        <select id="filterSurveySent">
+                            <option value="">Any</option>
+                            <option value="false">Not sent survey</option>
+                            <option value="true">Already sent survey</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="customMessage">Custom Message (optional):</label>
-                    <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label for="filterAgeMin">Min Age:</label>
+                        <input type="number" id="filterAgeMin" placeholder="18" min="18" max="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="filterAgeMax">Max Age:</label>
+                        <input type="number" id="filterAgeMax" placeholder="100" min="18" max="100">
+                    </div>
                 </div>
-                <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
+                
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <button onclick="searchParticipants()" style="background-color: #17a2b8; margin-right: 10px;">🔍 Search Participants</button>
+                    <button onclick="clearFilters()" style="background-color: #6c757d;">Clear Filters</button>
+                </div>
+                
+                <!-- Search Results -->
+                <div id="searchResults" style="display: none; margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">Search Results: <span id="resultCount">0</span> participants</h4>
+                        <div>
+                            <button onclick="selectAllResults()" style="background-color: #28a745; font-size: 12px; padding: 5px 10px;">Select All</button>
+                            <button onclick="deselectAllResults()" style="background-color: #dc3545; font-size: 12px; padding: 5px 10px;">Deselect All</button>
+                        </div>
+                    </div>
+                    
+                    <div id="participantsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background-color: white; border-radius: 5px;">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
             </div>
         </div>
+        
+        <!-- Action Buttons -->
+        <div style="text-align: center; margin-top: 20px;">
+            <button onclick="sendSurvey()" id="sendSurveyBtn" style="background-color: #007bff; font-size: 18px; padding: 15px 30px;">📧 Send Survey</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.targeting-btn {
+    background-color: #6c757d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.targeting-btn.active {
+    background-color: #007bff;
+}
+
+.targeting-btn:hover {
+    opacity: 0.8;
+}
+
+.participant-item {
+    padding: 10px;
+    margin-bottom: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.participant-item:hover {
+    background-color: #e9ecef;
+}
+
+.participant-item.selected {
+    background-color: #d4edda;
+    border-color: #28a745;
+}
+
+.participant-item input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.participant-main {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.participant-details {
+    font-size: 12px;
+    color: #666;
+}
+
+.search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+@media (max-width: 768px) {
+    .search-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
         
         <div id="tab-manage" class="tab-content">
             <div class="section">
@@ -1576,6 +2012,314 @@ async function sendConsentToPreview() {
         showStatus('Error sending consent requests: ' + error.message, false);
     }
 }
+
+let currentTargetingMode = 'all';
+let searchResults = [];
+let selectedParticipants = [];
+
+// Initialize the survey tab
+async function initializeSurveyTab() {
+    await loadFilterOptions();
+}
+
+// Load filter options from the server
+async function loadFilterOptions() {
+    try {
+        const response = await fetch(`${API_BASE}/filter_options`);
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            const options = result.options;
+            
+            // Populate dropdowns
+            populateSelect('filterGender', options.genders);
+            populateSelect('filterRegion', options.regions);
+            populateSelect('filterEducation', options.education_levels);
+            populateSelect('filterPhoneType', options.phone_types);
+            populateSelect('filterVoteIntent', options.vote_intents);
+            
+            // Set age range
+            if (options.age_range) {
+                document.getElementById('filterAgeMin').placeholder = options.age_range.min.toString();
+                document.getElementById('filterAgeMax').placeholder = options.age_range.max.toString();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading filter options:', error);
+    }
+}
+
+function populateSelect(selectId, options) {
+    const select = document.getElementById(selectId);
+    const currentValue = select.value;
+    
+    // Clear existing options (except "Any")
+    while (select.children.length > 1) {
+        select.removeChild(select.lastChild);
+    }
+    
+    // Add new options
+    options.forEach(option => {
+        const optionElement = document.createElement('option');
+        optionElement.value = option;
+        optionElement.textContent = option;
+        select.appendChild(optionElement);
+    });
+    
+    // Restore previous selection if it still exists
+    if (currentValue && options.includes(currentValue)) {
+        select.value = currentValue;
+    }
+}
+
+function toggleTargetingMode(mode) {
+    currentTargetingMode = mode;
+    
+    const targetAllBtn = document.getElementById('targetAll');
+    const targetSearchBtn = document.getElementById('targetSearch');
+    const searchInterface = document.getElementById('searchInterface');
+    
+    if (mode === 'all') {
+        targetAllBtn.classList.add('active');
+        targetSearchBtn.classList.remove('active');
+        searchInterface.style.display = 'none';
+    } else {
+        targetAllBtn.classList.remove('active');
+        targetSearchBtn.classList.add('active');
+        searchInterface.style.display = 'block';
+    }
+    
+    updateSendButton();
+}
+
+async function searchParticipants() {
+    const filters = {
+        gender: document.getElementById('filterGender').value,
+        region: document.getElementById('filterRegion').value,
+        education: document.getElementById('filterEducation').value,
+        phone_type: document.getElementById('filterPhoneType').value,
+        vote_intent: document.getElementById('filterVoteIntent').value,
+        age_min: document.getElementById('filterAgeMin').value,
+        age_max: document.getElementById('filterAgeMax').value,
+        survey_sent: document.getElementById('filterSurveySent').value === '' ? null : 
+                    document.getElementById('filterSurveySent').value === 'true'
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE}/search_participants`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ filters })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            searchResults = result.participants;
+            displaySearchResults(searchResults);
+            showStatus(`Found ${result.count} matching participants`, true);
+        } else {
+            showStatus('Search failed: ' + result.message, false);
+        }
+    } catch (error) {
+        showStatus('Error searching participants: ' + error.message, false);
+    }
+}
+
+function displaySearchResults(participants) {
+    const resultCount = document.getElementById('resultCount');
+    const participantsList = document.getElementById('participantsList');
+    const searchResultsDiv = document.getElementById('searchResults');
+    
+    resultCount.textContent = participants.length;
+    participantsList.innerHTML = '';
+    
+    if (participants.length === 0) {
+        participantsList.innerHTML = '<p style="text-align: center; color: #666;">No participants match your search criteria.</p>';
+    } else {
+        participants.forEach((participant, index) => {
+            const div = document.createElement('div');
+            div.className = 'participant-item';
+            div.onclick = () => toggleParticipantSelection(participant.phone_number);
+            
+            const details = [];
+            if (participant.gender) details.push(`Gender: ${participant.gender}`);
+            if (participant.age) details.push(`Age: ${participant.age}`);
+            if (participant.region) details.push(`Region: ${participant.region}`);
+            if (participant.education) details.push(`Education: ${participant.education}`);
+            if (participant.last_fed_vote_intent) details.push(`Vote Intent: ${participant.last_fed_vote_intent}`);
+            if (participant.survey_sent) details.push(`Survey: ${participant.survey_sent ? 'Sent' : 'Not sent'}`);
+            
+            div.innerHTML = `
+                <input type="checkbox" id="participant_${index}" onchange="toggleParticipantSelection('${participant.phone_number}')">
+                <div class="participant-main">${participant.phone_number}</div>
+                <div class="participant-details">${details.join(' • ')}</div>
+            `;
+            
+            participantsList.appendChild(div);
+        });
+    }
+    
+    searchResultsDiv.style.display = 'block';
+    selectedParticipants = []; // Reset selection
+    updateSendButton();
+}
+
+function toggleParticipantSelection(phoneNumber) {
+    const index = selectedParticipants.indexOf(phoneNumber);
+    
+    if (index > -1) {
+        selectedParticipants.splice(index, 1);
+    } else {
+        selectedParticipants.push(phoneNumber);
+    }
+    
+    // Update visual selection
+    const participantItems = document.querySelectorAll('.participant-item');
+    participantItems.forEach(item => {
+        const phone = item.querySelector('.participant-main').textContent;
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        
+        if (selectedParticipants.includes(phone)) {
+            item.classList.add('selected');
+            checkbox.checked = true;
+        } else {
+            item.classList.remove('selected');
+            checkbox.checked = false;
+        }
+    });
+    
+    updateSendButton();
+}
+
+function selectAllResults() {
+    selectedParticipants = searchResults.map(p => p.phone_number);
+    
+    const participantItems = document.querySelectorAll('.participant-item');
+    participantItems.forEach(item => {
+        item.classList.add('selected');
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = true;
+    });
+    
+    updateSendButton();
+}
+
+function deselectAllResults() {
+    selectedParticipants = [];
+    
+    const participantItems = document.querySelectorAll('.participant-item');
+    participantItems.forEach(item => {
+        item.classList.remove('selected');
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = false;
+    });
+    
+    updateSendButton();
+}
+
+function clearFilters() {
+    document.getElementById('filterGender').value = '';
+    document.getElementById('filterRegion').value = '';
+    document.getElementById('filterEducation').value = '';
+    document.getElementById('filterPhoneType').value = '';
+    document.getElementById('filterVoteIntent').value = '';
+    document.getElementById('filterSurveySent').value = '';
+    document.getElementById('filterAgeMin').value = '';
+    document.getElementById('filterAgeMax').value = '';
+    
+    document.getElementById('searchResults').style.display = 'none';
+    selectedParticipants = [];
+    updateSendButton();
+}
+
+function updateSendButton() {
+    const sendBtn = document.getElementById('sendSurveyBtn');
+    
+    if (currentTargetingMode === 'all') {
+        sendBtn.textContent = '📧 Send Survey to All Consented';
+    } else if (selectedParticipants.length > 0) {
+        sendBtn.textContent = `📧 Send Survey to ${selectedParticipants.length} Selected`;
+    } else {
+        sendBtn.textContent = '📧 Send Survey (No participants selected)';
+    }
+}
+
+async function sendSurvey() {
+    const surveyUrl = document.getElementById('surveyUrl').value;
+    const customMessage = document.getElementById('customMessage').value;
+    
+    if (!surveyUrl) {
+        showStatus('Please enter a survey URL', false);
+        return;
+    }
+
+    try {
+        let response;
+        
+        if (currentTargetingMode === 'all') {
+            // Send to all consented participants (original functionality)
+            const body = `survey_url=${encodeURIComponent(surveyUrl)}`;
+            const fullBody = customMessage ? 
+                `${body}&custom_message=${encodeURIComponent(customMessage)}` : body;
+            
+            response = await fetch(`${API_BASE}/send_survey`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: fullBody
+            });
+        } else {
+            // Send to selected participants
+            if (selectedParticipants.length === 0) {
+                showStatus('Please select participants to send the survey to', false);
+                return;
+            }
+            
+            response = await fetch(`${API_BASE}/send_targeted_survey`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    survey_url: surveyUrl,
+                    phone_numbers: selectedParticipants,
+                    custom_message: customMessage
+                })
+            });
+        }
+        
+        const result = await response.json();
+        showStatus(result.message, response.ok);
+        
+        // Refresh search results if we were in search mode
+        if (currentTargetingMode === 'search' && selectedParticipants.length > 0) {
+            setTimeout(() => {
+                searchParticipants(); // Refresh to show updated survey_sent status
+            }, 1000);
+        }
+        
+    } catch (error) {
+        showStatus('Error sending survey: ' + error.message, false);
+    }
+}
+
+// Initialize when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize survey tab when it becomes active
+    const surveyTab = document.querySelector('[onclick*="tab-survey"]');
+    if (surveyTab) {
+        surveyTab.addEventListener('click', initializeSurveyTab);
+    }
+    
+    // Also initialize if survey tab is already active
+    if (document.getElementById('tab-survey').classList.contains('active')) {
+        initializeSurveyTab();
+    }
+});
     </script>
 </body>
 </html>'''
