@@ -2267,8 +2267,31 @@ function displaySearchResults(participants) {
         participants.forEach((participant, index) => {
             const div = document.createElement('div');
             div.className = 'participant-item';
-            div.onclick = () => toggleParticipantSelection(participant.phone_number);
             
+            // Create checkbox
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `participant_${index}`;
+            checkbox.style.marginRight = '10px';
+            checkbox.addEventListener('change', function() {
+                toggleParticipantSelection(participant.phone_number);
+            });
+            
+            // Create main content div
+            const contentDiv = document.createElement('div');
+            contentDiv.style.flex = '1';
+            contentDiv.style.cursor = 'pointer';
+            contentDiv.addEventListener('click', function() {
+                checkbox.checked = !checkbox.checked;
+                toggleParticipantSelection(participant.phone_number);
+            });
+            
+            // Phone number
+            const phoneDiv = document.createElement('div');
+            phoneDiv.className = 'participant-main';
+            phoneDiv.textContent = participant.phone_number;
+            
+            // Details
             const details = [];
             if (participant.gender) details.push(`Gender: ${participant.gender}`);
             if (participant.age) details.push(`Age: ${participant.age}`);
@@ -2277,11 +2300,18 @@ function displaySearchResults(participants) {
             if (participant.last_fed_vote_intent) details.push(`Vote Intent: ${participant.last_fed_vote_intent}`);
             if (participant.survey_sent) details.push(`Survey: ${participant.survey_sent ? 'Sent' : 'Not sent'}`);
             
-            div.innerHTML = `
-                <input type="checkbox" id="participant_${index}" onchange="toggleParticipantSelection('${participant.phone_number}')">
-                <div class="participant-main">${participant.phone_number}</div>
-                <div class="participant-details">${details.join(' • ')}</div>
-            `;
+            const detailsDiv = document.createElement('div');
+            detailsDiv.className = 'participant-details';
+            detailsDiv.textContent = details.join(' • ');
+            
+            // Assemble the structure
+            contentDiv.appendChild(phoneDiv);
+            contentDiv.appendChild(detailsDiv);
+            
+            div.style.display = 'flex';
+            div.style.alignItems = 'center';
+            div.appendChild(checkbox);
+            div.appendChild(contentDiv);
             
             participantsList.appendChild(div);
         });
@@ -2289,33 +2319,6 @@ function displaySearchResults(participants) {
     
     searchResultsDiv.style.display = 'block';
     selectedParticipants = []; // Reset selection
-    updateSendButton();
-}
-
-function toggleParticipantSelection(phoneNumber) {
-    const index = selectedParticipants.indexOf(phoneNumber);
-    
-    if (index > -1) {
-        selectedParticipants.splice(index, 1);
-    } else {
-        selectedParticipants.push(phoneNumber);
-    }
-    
-    // Update visual selection
-    const participantItems = document.querySelectorAll('.participant-item');
-    participantItems.forEach(item => {
-        const phone = item.querySelector('.participant-main').textContent;
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        
-        if (selectedParticipants.includes(phone)) {
-            item.classList.add('selected');
-            checkbox.checked = true;
-        } else {
-            item.classList.remove('selected');
-            checkbox.checked = false;
-        }
-    });
-    
     updateSendButton();
 }
 
