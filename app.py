@@ -412,6 +412,15 @@ def process_csv_file(file_content, column_mapping=None):
         
         print(f"CSV DEBUGGING: Extracted {len(participants_data)} participants with data")
         
+        # For backward compatibility, if no column mapping is provided, return phone_numbers list
+        if not column_mapping:
+            return {
+                "status": "success",
+                "phone_numbers": [p['phone_number'] for p in participants_data],
+                "total": len(participants_data),
+                "headers": headers
+            }
+        
         return {
             "status": "success",
             "participants": participants_data,
@@ -558,38 +567,77 @@ def upload_csv():
         if result["status"] == "error":
             return jsonify(result), 400
         
-        # Save participants with their data
-        save_results = save_participants_with_data(result["participants"])
-        
         # Check if we should send consent requests immediately
         send_immediately = request.form.get('send_immediately') == 'true'
         
-        if send_immediately and result["participants"]:
-            # Extract just phone numbers for sending
-            phone_numbers = [p['phone_number'] for p in result["participants"]]
-            send_results = send_consent_request(phone_numbers)
+        # Handle the response based on whether we have column mapping or not
+        if column_mapping and 'participants' in result:
+            # Save participants with their data
+            save_results = save_participants_with_data(result["participants"])
+            
+            if send_immediately:
+                # Extract just phone numbers for sending
+                phone_numbers = [p['phone_number'] for p in result["participants"]]
+                send_results = send_consent_request(phone_numbers)
+                
+                return jsonify({
+                    "status": "success",
+                    "message": f"Processed CSV, saved data, and sent consent requests",
+                    "total_numbers": result["total"],
+                    "saved_successfully": save_results["success"],
+                    "save_failures": save_results["failed"],
+                    "successful_sends": len(send_results["success"]),
+                    "failed_sends": len(send_results["failed"]),
+                    "failures": send_results["failed"]
+                })
+            
+            # Just return the results without sending
+            return jsonify({
+                "status": "success",
+                "message": f"Successfully processed {result['total']} participants from CSV",
+                "participants": result["participants"][:10],  # Return first 10 for preview
+                "total": result["total"],
+                "headers": result["headers"],
+                "saved_successfully": save_results["success"],
+                "save_failures": save_results["failed"]
+            })
+        else:
+            # Old behavior - just phone numbers without additional data
+            phone_numbers = result.get("phone_numbers", [])
+            
+            # Save phone numbers to database
+            saved_count = 0
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            try:
+                for phone in phone_numbers:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO participants (phone_number) VALUES (?)",
+                        (phone,)
+                    )
+                    saved_count += cursor.rowcount
+                conn.commit()
+            finally:
+                conn.close()
+            
+            if send_immediately and phone_numbers:
+                send_results = send_consent_request(phone_numbers)
+                
+                return jsonify({
+                    "status": "success",
+                    "message": f"Processed CSV and sent consent requests",
+                    "total_numbers": result["total"],
+                    "successful_sends": len(send_results["success"]),
+                    "failed_sends": len(send_results["failed"]),
+                    "failures": send_results["failed"]
+                })
             
             return jsonify({
                 "status": "success",
-                "message": f"Processed CSV, saved data, and sent consent requests",
-                "total_numbers": result["total"],
-                "saved_successfully": save_results["success"],
-                "save_failures": save_results["failed"],
-                "successful_sends": len(send_results["success"]),
-                "failed_sends": len(send_results["failed"]),
-                "failures": send_results["failed"]
+                "message": f"Successfully extracted {result['total']} phone numbers from CSV",
+                "phone_numbers": phone_numbers,
+                "total": result["total"]
             })
-        
-        # Just return the results without sending
-        return jsonify({
-            "status": "success",
-            "message": f"Successfully processed {result['total']} participants from CSV",
-            "participants": result["participants"][:10],  # Return first 10 for preview
-            "total": result["total"],
-            "headers": result["headers"],
-            "saved_successfully": save_results["success"],
-            "save_failures": save_results["failed"]
-        })
     
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error processing file: {str(e)}"}), 500
