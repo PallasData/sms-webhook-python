@@ -2387,6 +2387,86 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeSurveyTab();
     }
 });
+
+<div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border-radius: 5px;">
+    <h4>🔍 Debug Participants Issue</h4>
+    <button onclick="debugParticipantsCall()" style="background-color: #dc3545;">Debug Participants Call</button>
+    <div id="debugOutput" style="margin-top: 10px; max-height: 400px; overflow-y: auto; display: none;">
+        <pre id="debugText" style="background: white; padding: 10px; border-radius: 3px; font-size: 12px;"></pre>
+    </div>
+</div>
+
+<script>
+async function debugParticipantsCall() {
+    const debugDiv = document.getElementById('debugOutput');
+    const debugText = document.getElementById('debugText');
+    
+    let debugInfo = '';
+    
+    try {
+        debugInfo += `=== DEBUGGING PARTICIPANTS ENDPOINT ===\n`;
+        debugInfo += `Timestamp: ${new Date().toISOString()}\n`;
+        debugInfo += `API Base: ${API_BASE}\n`;
+        debugInfo += `Full URL: ${API_BASE}/participants\n\n`;
+        
+        // Make the request
+        debugInfo += `Making fetch request...\n`;
+        const response = await fetch(`${API_BASE}/participants`);
+        
+        debugInfo += `Response received!\n`;
+        debugInfo += `Status: ${response.status} ${response.statusText}\n`;
+        debugInfo += `OK: ${response.ok}\n`;
+        debugInfo += `Headers:\n`;
+        
+        for (let [key, value] of response.headers.entries()) {
+            debugInfo += `  ${key}: ${value}\n`;
+        }
+        
+        // Get the raw response text
+        debugInfo += `\nReading response body...\n`;
+        const responseText = await response.text();
+        debugInfo += `Response length: ${responseText.length} characters\n`;
+        debugInfo += `First 500 chars: ${responseText.substring(0, 500)}\n`;
+        
+        if (responseText.length > 500) {
+            debugInfo += `...truncated...\n`;
+        }
+        
+        debugInfo += `\n=== ATTEMPTING JSON PARSE ===\n`;
+        
+        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+            try {
+                const jsonData = JSON.parse(responseText);
+                debugInfo += `JSON Parse: SUCCESS!\n`;
+                debugInfo += `Status: ${jsonData.status}\n`;
+                debugInfo += `Data type: ${typeof jsonData.data}\n`;
+                debugInfo += `Data length: ${jsonData.data ? jsonData.data.length : 'null/undefined'}\n`;
+                
+                if (jsonData.data && jsonData.data.length > 0) {
+                    debugInfo += `First participant keys: ${Object.keys(jsonData.data[0]).join(', ')}\n`;
+                }
+            } catch (parseError) {
+                debugInfo += `JSON Parse: FAILED!\n`;
+                debugInfo += `Parse Error: ${parseError.message}\n`;
+                debugInfo += `This is likely the root cause of the issue.\n`;
+            }
+        } else {
+            debugInfo += `Response doesn't look like JSON (doesn't start with { or [)\n`;
+            debugInfo += `This suggests the server returned an error page instead of JSON\n`;
+        }
+        
+    } catch (fetchError) {
+        debugInfo += `\n=== FETCH ERROR ===\n`;
+        debugInfo += `Error: ${fetchError.message}\n`;
+        debugInfo += `Stack: ${fetchError.stack}\n`;
+    }
+    
+    debugText.textContent = debugInfo;
+    debugDiv.style.display = 'block';
+    
+    // Also log to console for browser dev tools
+    console.log('Participants Debug Info:', debugInfo);
+}
     </script>
 </body>
 </html>'''
