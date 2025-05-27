@@ -1629,6 +1629,831 @@ def dashboard():
                     viewParticipants();
                 }
             } catch (error) {
+                showStatus('Error clearing database: ' + error.message, false);
+            }
+        }
+
+        async function resetSurveySent() {
+            if (!confirm('Reset survey sent status for all participants?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/reset_survey_status`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+                
+                // Refresh participants view if it's open
+                if (document.getElementById('participantsTable').style.display !== 'none') {
+                    viewParticipants();
+                }
+            } catch (error) {
+                showStatus('Error resetting survey status: ' + error.message, false);
+            }
+        }
+
+        function exportData() {
+            showStatus('Starting data export...', true);
+            
+            // Create a hidden iframe to trigger the download without navigating away
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            
+            // Set the source to the export endpoint
+            iframe.src = `${API_BASE}/export_data`;
+            
+            // Notify the user
+            setTimeout(() => {
+                showStatus('Download started. Check your downloads folder.', true);
+                
+                // Clean up the iframe after download has started
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 5000);
+            }, 1000);
+        }
+    </script>
+</body>
+</html>'''
+
+if __name__ == '__main__':
+    # Initialize database
+    init_database()
+    
+    # Get port from environment (for cloud deployment)
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Run the app
+    app.run(host='0.0.0.0', port=port, debug=False)2 {
+            color: #555;
+            margin-top: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="url"], textarea, input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .danger-button {
+            background-color: #dc3545;
+        }
+        .danger-button:hover {
+            background-color: #c82333;
+        }
+        .section {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .section:last-child {
+            border-bottom: none;
+        }
+        #status {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+        .form-row input {
+            flex: 1;
+        }
+        .checkbox-group {
+            margin: 10px 0;
+        }
+        .checkbox-group label {
+            display: inline;
+            font-weight: normal;
+            margin-left: 5px;
+        }
+        .preview-area {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        .preview-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .preview-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-right: 5px;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+            background-color: #f8f9fa;
+        }
+        .tab.active {
+            background-color: white;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .column-mapping {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
+        .mapping-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+        .mapping-row label {
+            width: 150px;
+            margin-bottom: 0;
+        }
+        .mapping-row select {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .step-indicator {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #e7f3ff;
+            border-left: 4px solid #007bff;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 SMS Management Dashboard</h1>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="openTab(event, 'tab-single')">Single Number</div>
+            <div class="tab" onclick="openTab(event, 'tab-csv')">CSV Upload</div>
+            <div class="tab" onclick="openTab(event, 'tab-survey')">Send Survey</div>
+            <div class="tab" onclick="openTab(event, 'tab-manage')">Manage Data</div>
+        </div>
+        
+        <div id="tab-single" class="tab-content active">
+            <div class="section">
+                <h2>Send Consent Request to Single Number</h2>
+                <div class="form-group">
+                    <label for="phone">Phone Number (e.g., +16478941552):</label>
+                    <input type="text" id="phone" placeholder="+1234567890">
+                </div>
+                <button onclick="sendConsent()">Send Consent Request</button>
+            </div>
+        </div>
+        
+        <div id="tab-csv" class="tab-content">
+            <div class="section">
+                <h2>Upload CSV with Phone Numbers</h2>
+                
+                <div class="step-indicator" id="step1">
+                    <strong>Step 1:</strong> Select a CSV file to upload
+                </div>
+                
+                <div class="form-group">
+                    <label for="csvFile">Select a CSV file with phone numbers:</label>
+                    <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect()">
+                    <p style="color: #6c757d; font-size: 14px; margin-top: 5px;">
+                        The system will look for columns with names containing "phone", "mobile", 
+                        "cell", "contact", "number", or "tel".
+                    </p>
+                </div>
+                
+                <div class="column-mapping" id="columnMapping">
+                    <div class="step-indicator">
+                        <strong>Step 2:</strong> Map CSV columns to database fields (optional)
+                    </div>
+                    <p style="margin-bottom: 15px; color: #6c757d;">
+                        Select which CSV columns should be imported into each database field:
+                    </p>
+                    <div class="mapping-row">
+                        <label>Call Time:</label>
+                        <select id="map_calltime">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Vote Intent:</label>
+                        <select id="map_last_fed_vote_intent">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Gender:</label>
+                        <select id="map_gender">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Age:</label>
+                        <select id="map_age">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Education:</label>
+                        <select id="map_education">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Phone Type:</label>
+                        <select id="map_phone_type">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Region:</label>
+                        <select id="map_region">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Notes:</label>
+                        <select id="map_notes">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="sendImmediately">
+                    <label for="sendImmediately">Send consent requests immediately after upload</label>
+                </div>
+                <button onclick="uploadCSV()">Upload and Process CSV</button>
+                
+                <div id="previewArea" class="preview-area">
+                    <div class="preview-header">Upload Results:</div>
+                    <div id="uploadResults"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="tab-survey" class="tab-content">
+            <div class="section">
+                <h2>Send Survey Link</h2>
+                <div class="form-group">
+                    <label for="surveyUrl">Survey URL:</label>
+                    <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
+                </div>
+                <div class="form-group">
+                    <label for="customMessage">Custom Message (optional):</label>
+                    <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
+                </div>
+                <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
+            </div>
+        </div>
+        
+        <div id="tab-manage" class="tab-content">
+            <div class="section">
+                <h2>Manage Participants</h2>
+                <div style="margin-bottom: 15px;">
+                    <button onclick="viewParticipants()">View All Participants</button>
+                    <button onclick="exportData()">Export Data to CSV</button>
+                </div>
+                <div id="participantsTable" style="margin-top: 20px; display: none;">
+                    <table id="participantsData" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f8f9fa;">
+                                <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Additional Data</th>
+                            </tr>
+                        </thead>
+                        <tbody id="participantsBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>Database Management</h2>
+                <p style="color: #6c757d; font-size: 14px;">⚠️ Danger Zone: These actions cannot be undone!</p>
+                <button class="danger-button" onclick="clearDatabase()">Clear All Data</button>
+                <button onclick="resetSurveySent()">Reset Survey Sent Status</button>
+            </div>
+            
+            <div class="section">
+                <h2>App Status</h2>
+                <button onclick="checkHealth()">Check App Health</button>
+                <div id="healthInfo" style="margin-top: 10px; display: none;">
+                    <div id="healthStatus"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let selectedFile = null;
+        let csvHeaders = [];
+
+        function openTab(evt, tabName) {
+            // Hide all tab content
+            const tabContents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove("active");
+            }
+            
+            // Remove active class from all tabs
+            const tabs = document.getElementsByClassName("tab");
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove("active");
+            }
+            
+            // Show the selected tab content and add active class to the tab
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
+
+        function showStatus(message, isSuccess = true) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = isSuccess ? 'success' : 'error';
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        async function handleFileSelect() {
+            const fileInput = document.getElementById('csvFile');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                return;
+            }
+
+            selectedFile = fileInput.files[0];
+            
+            // Preview the CSV to get headers
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch(`${API_BASE}/preview_csv`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.headers) {
+                    csvHeaders = result.headers;
+                    populateColumnSelectors();
+                    document.getElementById('columnMapping').style.display = 'block';
+                    showStatus(`CSV preview loaded. Found ${result.total_rows} rows with ${result.headers.length} columns.`, true);
+                    
+                    // Try to auto-map columns based on common names
+                    autoMapColumns();
+                } else {
+                    showStatus('Error previewing CSV file', false);
+                }
+            } catch (error) {
+                showStatus('Error previewing CSV: ' + error.message, false);
+            }
+        }
+
+        function populateColumnSelectors() {
+            const selectors = [
+                'map_calltime', 'map_last_fed_vote_intent', 'map_gender', 
+                'map_age', 'map_education', 'map_phone_type', 'map_region', 'map_notes'
+            ];
+            
+            selectors.forEach(selectorId => {
+                const select = document.getElementById(selectorId);
+                // Clear existing options except the first one
+                while (select.options.length > 1) {
+                    select.remove(1);
+                }
+                
+                // Add CSV headers as options
+                csvHeaders.forEach(header => {
+                    const option = document.createElement('option');
+                    option.value = header;
+                    option.textContent = header;
+                    select.appendChild(option);
+                });
+            });
+        }
+
+        function autoMapColumns() {
+            // Auto-mapping logic based on common column names
+            const mappings = {
+                'map_calltime': ['calltime', 'call time', 'call_time'],
+                'map_last_fed_vote_intent': ['decandlean', 'vote intent', 'voting', 'party'],
+                'map_gender': ['gender', 'sex'],
+                'map_age': ['age', 'age group', 'age_group'],
+                'map_education': ['education', 'edu', 'schooling'],
+                'map_phone_type': ['phonetype', 'phone type', 'phone_type'],
+                'map_region': ['region', 'quota', 'area', 'location'],
+                'map_notes': ['notes', 'comments', 'remarks']
+            };
+            
+            Object.entries(mappings).forEach(([selectId, possibleNames]) => {
+                const select = document.getElementById(selectId);
+                const lowerHeaders = csvHeaders.map(h => h.toLowerCase());
+                
+                for (let possibleName of possibleNames) {
+                    const matchIndex = lowerHeaders.findIndex(h => h.includes(possibleName));
+                    if (matchIndex !== -1) {
+                        select.value = csvHeaders[matchIndex];
+                        break;
+                    }
+                }
+            });
+        }
+
+        function getColumnMapping() {
+            const mapping = {};
+            const fields = [
+                'calltime', 'last_fed_vote_intent', 'gender', 
+                'age', 'education', 'phone_type', 'region', 'notes'
+            ];
+            
+            fields.forEach(field => {
+                const selectValue = document.getElementById(`map_${field}`).value;
+                if (selectValue) {
+                    mapping[field] = selectValue;
+                }
+            });
+            
+            return mapping;
+        }
+
+        async function sendConsent() {
+            const phone = document.getElementById('phone').value;
+            if (!phone) {
+                showStatus('Please enter a phone number', false);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/send_consent`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `phone_number=${encodeURIComponent(phone)}`
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+            } catch (error) {
+                showStatus('Error sending consent request: ' + error.message, false);
+            }
+        }
+
+        async function uploadCSV() {
+            if (!selectedFile) {
+                showStatus('Please select a CSV file first', false);
+                return;
+            }
+
+            const sendImmediately = document.getElementById('sendImmediately').checked;
+            const columnMapping = getColumnMapping();
+            
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('send_immediately', sendImmediately);
+            formData.append('column_mapping', JSON.stringify(columnMapping));
+
+            try {
+                const response = await fetch(`${API_BASE}/upload_csv`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    const previewArea = document.getElementById('previewArea');
+                    const uploadResults = document.getElementById('uploadResults');
+                    
+                    let resultsHTML = `
+                        <p><strong>Upload Successful!</strong></p>
+                        <p>Total participants processed: ${result.total}</p>
+                        <p>Successfully saved: ${result.saved_successfully}</p>
+                    `;
+                    
+                    if (result.save_failures > 0) {
+                        resultsHTML += `<p style="color: red;">Failed to save: ${result.save_failures}</p>`;
+                    }
+                    
+                    if (sendImmediately) {
+                        resultsHTML += `
+                            <p>Consent requests sent: ${result.successful_sends}</p>
+                            <p>Failed sends: ${result.failed_sends}</p>
+                        `;
+                    }
+                    
+                    uploadResults.innerHTML = resultsHTML;
+                    previewArea.style.display = 'block';
+                    
+                    showStatus(result.message, true);
+                    
+                    // Reset form
+                    document.getElementById('csvFile').value = '';
+                    document.getElementById('columnMapping').style.display = 'none';
+                    selectedFile = null;
+                } else {
+                    showStatus(result.message || 'Error processing CSV file', false);
+                }
+                
+            } catch (error) {
+                showStatus('Error uploading CSV: ' + error.message, false);
+            }
+        }
+
+        async function sendSurvey() {
+            const surveyUrl = document.getElementById('surveyUrl').value;
+            const customMessage = document.getElementById('customMessage').value;
+            
+            if (!surveyUrl) {
+                showStatus('Please enter a survey URL', false);
+                return;
+            }
+
+            try {
+                const body = `survey_url=${encodeURIComponent(surveyUrl)}`;
+                const fullBody = customMessage ? 
+                    `${body}&custom_message=${encodeURIComponent(customMessage)}` : body;
+                
+                const response = await fetch(`${API_BASE}/send_survey`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: fullBody
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+            } catch (error) {
+                showStatus('Error sending survey: ' + error.message, false);
+            }
+        }
+
+        async function viewParticipants() {
+            try {
+                const response = await fetch(`${API_BASE}/participants`);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const tbody = document.getElementById('participantsBody');
+                    tbody.innerHTML = '';
+                    
+                    if (result.data && result.data.length > 0) {
+                        result.data.forEach(participant => {
+                            const row = tbody.insertRow();
+                            row.insertCell(0).textContent = participant.phone_number;
+                            row.insertCell(1).textContent = participant.consent_status;
+                            row.insertCell(2).textContent = participant.email || 'N/A';
+                            row.insertCell(3).textContent = participant.survey_sent ? 'Yes' : 'No';
+                            
+                            // Add button to view additional data
+                            const additionalCell = row.insertCell(4);
+                            const viewButton = document.createElement('button');
+                            viewButton.textContent = 'View Data';
+                            viewButton.style.padding = '5px 10px';
+                            viewButton.style.fontSize = '12px';
+                            viewButton.onclick = () => showAdditionalData(participant);
+                            additionalCell.appendChild(viewButton);
+                        });
+                    } else {
+                        const row = tbody.insertRow();
+                        const cell = row.insertCell(0);
+                        cell.colSpan = 5;
+                        cell.textContent = 'No participants found';
+                        cell.style.textAlign = 'center';
+                    }
+                    
+                    document.getElementById('participantsTable').style.display = 'block';
+                    showStatus('Participants loaded successfully', true);
+                } else {
+                    showStatus('Error loading participants', false);
+                }
+            } catch (error) {
+                showStatus('Error fetching participants: ' + error.message, false);
+            }
+        }
+        
+        function showAdditionalData(participant) {
+            // Create a modal to show additional data
+            const modal = document.createElement('div');
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.width = '100%';
+            modal.style.height = '100%';
+            modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            modal.style.display = 'flex';
+            modal.style.justifyContent = 'center';
+            modal.style.alignItems = 'center';
+            modal.style.zIndex = '1000';
+            
+            const content = document.createElement('div');
+            content.style.backgroundColor = 'white';
+            content.style.padding = '20px';
+            content.style.borderRadius = '5px';
+            content.style.width = '80%';
+            content.style.maxWidth = '600px';
+            content.style.maxHeight = '80%';
+            content.style.overflowY = 'auto';
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.float = 'right';
+            closeBtn.onclick = () => document.body.removeChild(modal);
+            
+            content.innerHTML = `
+                <h3>Additional Data for ${participant.phone_number}</h3>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                    <tr>
+                        <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Field</th>
+                        <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Value</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Call Time</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.calltime || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Last Federal Vote Intent</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.last_fed_vote_intent || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Gender</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.gender || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Age</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.age || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Education</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.education || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Phone Type</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.phone_type || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Region</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.region || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Notes</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.notes || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Created At</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.created_at || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Consent Timestamp</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.consent_timestamp || 'N/A'}</td>
+                    </tr>
+                </table>
+            `;
+            
+            content.appendChild(closeBtn);
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+            
+            // Close when clicking outside the modal
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                }
+            });
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const result = await response.json();
+                
+                const healthStatus = document.getElementById('healthStatus');
+                if (result.status === 'healthy') {
+                    healthStatus.innerHTML = `
+                        <div style="color: green;">
+                            <strong>✅ App is healthy!</strong><br>
+                            Timestamp: ${result.timestamp}<br>
+                            Database: ${result.database ? 'Connected' : 'Not connected'}
+                        </div>
+                    `;
+                    showStatus('Health check successful', true);
+                } else {
+                    healthStatus.innerHTML = `<div style="color: red;">❌ App is unhealthy</div>`;
+                    showStatus('Health check failed', false);
+                }
+                
+                document.getElementById('healthInfo').style.display = 'block';
+            } catch (error) {
+                showStatus('Error checking health: ' + error.message, false);
+            }
+        }
+
+        async function clearDatabase() {
+            if (!confirm('Are you sure you want to delete ALL participants and responses? This cannot be undone!')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/clear_database`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+                
+                // Refresh participants view if it's open
+                if (document.getElementById('participantsTable').style.display !== 'none') {
+                    viewParticipants();
+                }
+            } catch (error) {
                 showStatus('Error resetting survey status: ' + error.message, false);
             }
         }
