@@ -330,8 +330,15 @@ def send_survey_link(survey_url, custom_message=None):
         import time
         time.sleep(1)  # Rate limiting
 
-def process_csv_file(file_content):
-    """Process CSV file content and extract phone numbers"""
+def process_csv_file(file_content, column_mapping=None):
+    """
+    Process CSV file content and extract phone numbers with additional data
+    
+    Args:
+        file_content: The CSV file content
+        column_mapping: Dict mapping CSV columns to database fields
+                       e.g., {'calltime': 'Call Time', 'gender': 'Gender', ...}
+    """
     try:
         # Try to decode the file content as UTF-8
         if isinstance(file_content, bytes):
@@ -353,94 +360,63 @@ def process_csv_file(file_content):
         if not rows:
             return {"status": "error", "message": "CSV file is empty"}
         
-        # Print the first few rows for debugging
-        print("CSV DEBUGGING: First 2 rows:")
-        for i, row in enumerate(rows[:2]):
-            print(f"  Row {i}: {row}")
+        # Extract headers
+        headers = [h.strip() for h in rows[0]]
+        print(f"CSV DEBUGGING: Headers: {headers}")
         
-        # Extract phone numbers
-        phone_numbers = []
-        
-        # Check the first row for headers
-        first_row = rows[0]
-        header_row = True
-        
-        print(f"CSV DEBUGGING: Headers: {first_row}")
-        
-        # Look for columns that might contain phone numbers
-        phone_col_indices = []
-        for i, header in enumerate(first_row):
-            header_lower = header.lower().strip()
-            print(f"CSV DEBUGGING: Checking header '{header}' (lower: '{header_lower}')")
+        # Find phone number column
+        phone_col_index = None
+        for i, header in enumerate(headers):
+            header_lower = header.lower()
             if header_lower == 'phone_number' or any(keyword in header_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
-                phone_col_indices.append(i)
-                print(f"CSV DEBUGGING: Found potential phone column: '{header}' at index {i}")
+                phone_col_index = i
+                print(f"CSV DEBUGGING: Found phone column: '{header}' at index {i}")
+                break
         
-        # If we couldn't find any phone columns, maybe the first row isn't a header
-        if not phone_col_indices:
-            print("CSV DEBUGGING: No phone columns found in header row")
-            # Check if the first row might contain phone numbers itself
-            for i, cell in enumerate(first_row):
-                cell_value = str(cell).strip()
-                print(f"CSV DEBUGGING: Testing if '{cell_value}' is a valid phone number")
-                if cell_value and is_valid_phone_number(cell_value):
-                    print(f"CSV DEBUGGING: Found valid phone number in first row: {cell_value}")
-                    header_row = False
-                    phone_col_indices.append(i)
-                    break
+        if phone_col_index is None:
+            return {"status": "error", "message": "No phone number column found in CSV"}
         
-        # If we still couldn't find phone columns, try the first column
-        if not phone_col_indices:
-            print("CSV DEBUGGING: Using first column as default phone column")
-            phone_col_indices.append(0)
+        # Build column index mapping
+        column_indices = {}
+        if column_mapping:
+            for db_field, csv_column in column_mapping.items():
+                try:
+                    col_index = headers.index(csv_column)
+                    column_indices[db_field] = col_index
+                    print(f"CSV DEBUGGING: Mapped '{csv_column}' (index {col_index}) to database field '{db_field}'")
+                except ValueError:
+                    print(f"CSV DEBUGGING: Warning - Column '{csv_column}' not found in CSV")
         
-        print(f"CSV DEBUGGING: Using columns at indices {phone_col_indices} for phone numbers")
-        print(f"CSV DEBUGGING: Treating first row as header: {header_row}")
+        # Process rows
+        participants_data = []
         
-        # Start from the appropriate row (skip header if we identified one)
-        start_row = 1 if header_row else 0
+        for row_idx, row in enumerate(rows[1:], start=1):
+            if phone_col_index < len(row):
+                phone = str(row[phone_col_index]).strip()
+                if phone and is_valid_phone_number(phone):
+                    participant = {
+                        'phone_number': normalize_phone_number(phone)
+                    }
+                    
+                    # Extract additional data based on column mapping
+                    for db_field, col_index in column_indices.items():
+                        if col_index < len(row):
+                            value = str(row[col_index]).strip()
+                            # Convert 'DECandLEAN' to 'last_fed_vote_intent' format
+                            if db_field == 'last_fed_vote_intent':
+                                participant['last_fed_vote_intent'] = value
+                            else:
+                                participant[db_field] = value
+                    
+                    participants_data.append(participant)
         
-        # Extract phone numbers from identified columns
-        valid_phones_found = 0
-        invalid_phones_found = 0
-        
-        for row_idx, row in enumerate(rows[start_row:], start=start_row):
-            phone_found = False
-            for col_idx in phone_col_indices:
-                if col_idx < len(row):
-                    cell_value = str(row[col_idx]).strip()
-                    if cell_value:
-                        is_valid = is_valid_phone_number(cell_value)
-                        print(f"CSV DEBUGGING: Row {row_idx}, Column {col_idx}: '{cell_value}' Valid: {is_valid}")
-                        if is_valid:
-                            normalized = normalize_phone_number(cell_value)
-                            print(f"CSV DEBUGGING: Normalized: {normalized}")
-                            phone_numbers.append(normalized)
-                            valid_phones_found += 1
-                            phone_found = True
-                            break
-                        else:
-                            invalid_phones_found += 1
-            
-            if not phone_found and row_idx < start_row + 5:  # Only log first few rows to avoid flooding logs
-                print(f"CSV DEBUGGING: No valid phone number found in row {row_idx}")
-        
-        print(f"CSV DEBUGGING: Found {valid_phones_found} valid and {invalid_phones_found} invalid phone numbers")
-        
-        # Remove duplicates while preserving order
-        unique_phones = []
-        seen = set()
-        for phone in phone_numbers:
-            if phone not in seen:
-                seen.add(phone)
-                unique_phones.append(phone)
-        
-        print(f"CSV DEBUGGING: Returning {len(unique_phones)} unique phone numbers")
+        print(f"CSV DEBUGGING: Extracted {len(participants_data)} participants with data")
         
         return {
-            "status": "success", 
-            "phone_numbers": unique_phones,
-            "total": len(unique_phones)
+            "status": "success",
+            "participants": participants_data,
+            "total": len(participants_data),
+            "headers": headers
         }
     
     except Exception as e:
@@ -448,6 +424,51 @@ def process_csv_file(file_content):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"Error processing CSV: {str(e)}"}
+
+def save_participants_with_data(participants_data):
+    """Save participants with their additional data to the database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    results = {"success": 0, "failed": 0, "errors": []}
+    
+    for participant in participants_data:
+        try:
+            # Build the SQL dynamically based on available fields
+            fields = ['phone_number']
+            values = [participant['phone_number']]
+            placeholders = ['?']
+            
+            # Add other fields if they exist
+            optional_fields = ['calltime', 'last_fed_vote_intent', 'gender', 'age', 
+                             'education', 'phone_type', 'region', 'notes']
+            
+            for field in optional_fields:
+                if field in participant and participant[field]:
+                    fields.append(field)
+                    values.append(participant[field])
+                    placeholders.append('?')
+            
+            # Build the INSERT OR REPLACE query
+            sql = f"""
+                INSERT OR REPLACE INTO participants ({', '.join(fields)})
+                VALUES ({', '.join(placeholders)})
+            """
+            
+            cursor.execute(sql, values)
+            results["success"] += 1
+            
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append({
+                "phone": participant.get('phone_number', 'Unknown'),
+                "error": str(e)
+            })
+    
+    conn.commit()
+    conn.close()
+    
+    return results
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -510,7 +531,7 @@ def send_consent_endpoint():
 
 @app.route('/upload_csv', methods=['POST'])
 def upload_csv():
-    """Handle CSV upload and process phone numbers"""
+    """Handle CSV upload and process phone numbers with column mapping"""
     if 'file' not in request.files:
         return jsonify({"status": "error", "message": "No file part"}), 400
     
@@ -526,38 +547,87 @@ def upload_csv():
         # Read the file content
         file_content = file.read()
         
+        # Get column mapping from request
+        column_mapping = request.form.get('column_mapping')
+        if column_mapping:
+            column_mapping = json.loads(column_mapping)
+        
         # Process the CSV file
-        result = process_csv_file(file_content)
+        result = process_csv_file(file_content, column_mapping)
         
         if result["status"] == "error":
             return jsonify(result), 400
         
+        # Save participants with their data
+        save_results = save_participants_with_data(result["participants"])
+        
         # Check if we should send consent requests immediately
         send_immediately = request.form.get('send_immediately') == 'true'
         
-        if send_immediately and result["phone_numbers"]:
-            # Send consent requests to extracted phone numbers
-            send_results = send_consent_request(result["phone_numbers"])
+        if send_immediately and result["participants"]:
+            # Extract just phone numbers for sending
+            phone_numbers = [p['phone_number'] for p in result["participants"]]
+            send_results = send_consent_request(phone_numbers)
             
             return jsonify({
                 "status": "success",
-                "message": f"Processed CSV and sent consent requests",
+                "message": f"Processed CSV, saved data, and sent consent requests",
                 "total_numbers": result["total"],
+                "saved_successfully": save_results["success"],
+                "save_failures": save_results["failed"],
                 "successful_sends": len(send_results["success"]),
                 "failed_sends": len(send_results["failed"]),
                 "failures": send_results["failed"]
             })
         
-        # Just return the extracted phone numbers
+        # Just return the results without sending
         return jsonify({
             "status": "success",
-            "message": f"Successfully extracted {result['total']} phone numbers from CSV",
-            "phone_numbers": result["phone_numbers"],
-            "total": result["total"]
+            "message": f"Successfully processed {result['total']} participants from CSV",
+            "participants": result["participants"][:10],  # Return first 10 for preview
+            "total": result["total"],
+            "headers": result["headers"],
+            "saved_successfully": save_results["success"],
+            "save_failures": save_results["failed"]
         })
     
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error processing file: {str(e)}"}), 500
+
+@app.route('/preview_csv', methods=['POST'])
+def preview_csv():
+    """Preview CSV headers and sample data without saving"""
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "No selected file"}), 400
+    
+    if not file.filename.endswith('.csv'):
+        return jsonify({"status": "error", "message": "File must be a CSV"}), 400
+    
+    try:
+        # Read the file content
+        file_content = file.read()
+        
+        # Process just to get headers and sample data
+        result = process_csv_file(file_content)
+        
+        if result["status"] == "error":
+            return jsonify(result), 400
+        
+        # Return headers and sample data
+        return jsonify({
+            "status": "success",
+            "headers": result["headers"],
+            "sample_data": result["participants"][:5],  # First 5 rows as sample
+            "total_rows": result["total"]
+        })
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error previewing file: {str(e)}"}), 500
 
 @app.route('/send_bulk_consent', methods=['POST'])
 def send_bulk_consent():
@@ -730,7 +800,7 @@ def dashboard():
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1000px;
             margin: 50px auto;
             padding: 20px;
             background-color: #f5f5f5;
@@ -885,6 +955,36 @@ def dashboard():
         tr:nth-child(even) {
             background-color: #f9f9f9;
         }
+        .column-mapping {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
+        .mapping-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+        .mapping-row label {
+            width: 150px;
+            margin-bottom: 0;
+        }
+        .mapping-row select {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .step-indicator {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #e7f3ff;
+            border-left: 4px solid #007bff;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -912,27 +1012,86 @@ def dashboard():
         <div id="tab-csv" class="tab-content">
             <div class="section">
                 <h2>Upload CSV with Phone Numbers</h2>
+                
+                <div class="step-indicator" id="step1">
+                    <strong>Step 1:</strong> Select a CSV file to upload
+                </div>
+                
                 <div class="form-group">
                     <label for="csvFile">Select a CSV file with phone numbers:</label>
-                    <input type="file" id="csvFile" accept=".csv">
+                    <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect()">
                     <p style="color: #6c757d; font-size: 14px; margin-top: 5px;">
                         The system will look for columns with names containing "phone", "mobile", 
-                        "cell", "contact", "number", or "tel". If no matching columns are found, 
-                        it will use the first column.
+                        "cell", "contact", "number", or "tel".
                     </p>
                 </div>
+                
+                <div class="column-mapping" id="columnMapping">
+                    <div class="step-indicator">
+                        <strong>Step 2:</strong> Map CSV columns to database fields (optional)
+                    </div>
+                    <p style="margin-bottom: 15px; color: #6c757d;">
+                        Select which CSV columns should be imported into each database field:
+                    </p>
+                    <div class="mapping-row">
+                        <label>Call Time:</label>
+                        <select id="map_calltime">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Vote Intent:</label>
+                        <select id="map_last_fed_vote_intent">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Gender:</label>
+                        <select id="map_gender">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Age:</label>
+                        <select id="map_age">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Education:</label>
+                        <select id="map_education">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Phone Type:</label>
+                        <select id="map_phone_type">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Region:</label>
+                        <select id="map_region">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                    <div class="mapping-row">
+                        <label>Notes:</label>
+                        <select id="map_notes">
+                            <option value="">-- Don't Import --</option>
+                        </select>
+                    </div>
+                </div>
+                
                 <div class="checkbox-group">
                     <input type="checkbox" id="sendImmediately">
                     <label for="sendImmediately">Send consent requests immediately after upload</label>
                 </div>
-                <button onclick="uploadCSV()">Upload CSV</button>
+                <button onclick="uploadCSV()">Upload and Process CSV</button>
                 
                 <div id="previewArea" class="preview-area">
-                    <div class="preview-header">Phone Numbers Preview:</div>
-                    <ul id="phonePreview" class="preview-list"></ul>
-                    <div id="previewControls" style="margin-top: 15px; display: none;">
-                        <button onclick="sendConsentToPreview()">Send Consent Requests to These Numbers</button>
-                    </div>
+                    <div class="preview-header">Upload Results:</div>
+                    <div id="uploadResults"></div>
                 </div>
             </div>
         </div>
@@ -997,7 +1156,8 @@ def dashboard():
 
     <script>
         const API_BASE = window.location.origin;
-        let extractedPhoneNumbers = [];
+        let selectedFile = null;
+        let csvHeaders = [];
 
         function openTab(evt, tabName) {
             // Hide all tab content
@@ -1027,6 +1187,109 @@ def dashboard():
             }, 5000);
         }
 
+        async function handleFileSelect() {
+            const fileInput = document.getElementById('csvFile');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                return;
+            }
+
+            selectedFile = fileInput.files[0];
+            
+            // Preview the CSV to get headers
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch(`${API_BASE}/preview_csv`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.headers) {
+                    csvHeaders = result.headers;
+                    populateColumnSelectors();
+                    document.getElementById('columnMapping').style.display = 'block';
+                    showStatus(`CSV preview loaded. Found ${result.total_rows} rows with ${result.headers.length} columns.`, true);
+                    
+                    // Try to auto-map columns based on common names
+                    autoMapColumns();
+                } else {
+                    showStatus('Error previewing CSV file', false);
+                }
+            } catch (error) {
+                showStatus('Error previewing CSV: ' + error.message, false);
+            }
+        }
+
+        function populateColumnSelectors() {
+            const selectors = [
+                'map_calltime', 'map_last_fed_vote_intent', 'map_gender', 
+                'map_age', 'map_education', 'map_phone_type', 'map_region', 'map_notes'
+            ];
+            
+            selectors.forEach(selectorId => {
+                const select = document.getElementById(selectorId);
+                // Clear existing options except the first one
+                while (select.options.length > 1) {
+                    select.remove(1);
+                }
+                
+                // Add CSV headers as options
+                csvHeaders.forEach(header => {
+                    const option = document.createElement('option');
+                    option.value = header;
+                    option.textContent = header;
+                    select.appendChild(option);
+                });
+            });
+        }
+
+        function autoMapColumns() {
+            // Auto-mapping logic based on common column names
+            const mappings = {
+                'map_calltime': ['calltime', 'call time', 'call_time'],
+                'map_last_fed_vote_intent': ['decandlean', 'vote intent', 'voting', 'party'],
+                'map_gender': ['gender', 'sex'],
+                'map_age': ['age', 'age group', 'age_group'],
+                'map_education': ['education', 'edu', 'schooling'],
+                'map_phone_type': ['phonetype', 'phone type', 'phone_type'],
+                'map_region': ['region', 'quota', 'area', 'location'],
+                'map_notes': ['notes', 'comments', 'remarks']
+            };
+            
+            Object.entries(mappings).forEach(([selectId, possibleNames]) => {
+                const select = document.getElementById(selectId);
+                const lowerHeaders = csvHeaders.map(h => h.toLowerCase());
+                
+                for (let possibleName of possibleNames) {
+                    const matchIndex = lowerHeaders.findIndex(h => h.includes(possibleName));
+                    if (matchIndex !== -1) {
+                        select.value = csvHeaders[matchIndex];
+                        break;
+                    }
+                }
+            });
+        }
+
+        function getColumnMapping() {
+            const mapping = {};
+            const fields = [
+                'calltime', 'last_fed_vote_intent', 'gender', 
+                'age', 'education', 'phone_type', 'region', 'notes'
+            ];
+            
+            fields.forEach(field => {
+                const selectValue = document.getElementById(`map_${field}`).value;
+                if (selectValue) {
+                    mapping[field] = selectValue;
+                }
+            });
+            
+            return mapping;
+        }
+
         async function sendConsent() {
             const phone = document.getElementById('phone').value;
             if (!phone) {
@@ -1051,23 +1314,18 @@ def dashboard():
         }
 
         async function uploadCSV() {
-            const fileInput = document.getElementById('csvFile');
+            if (!selectedFile) {
+                showStatus('Please select a CSV file first', false);
+                return;
+            }
+
             const sendImmediately = document.getElementById('sendImmediately').checked;
+            const columnMapping = getColumnMapping();
             
-            if (!fileInput.files || fileInput.files.length === 0) {
-                showStatus('Please select a CSV file', false);
-                return;
-            }
-
-            const file = fileInput.files[0];
-            if (!file.name.endsWith('.csv')) {
-                showStatus('Please select a CSV file', false);
-                return;
-            }
-
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', selectedFile);
             formData.append('send_immediately', sendImmediately);
+            formData.append('column_mapping', JSON.stringify(columnMapping));
 
             try {
                 const response = await fetch(`${API_BASE}/upload_csv`, {
@@ -1078,75 +1336,41 @@ def dashboard():
                 const result = await response.json();
                 
                 if (response.ok) {
-                    if (sendImmediately) {
-                        showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_numbers} phone numbers`, true);
-                    } else {
-                        // Store the extracted phone numbers for later use
-                        extractedPhoneNumbers = result.phone_numbers;
-                        
-                        // Show preview
-                        const previewArea = document.getElementById('previewArea');
-                        const phonePreview = document.getElementById('phonePreview');
-                        const previewControls = document.getElementById('previewControls');
-                        
-                        // Clear previous preview
-                        phonePreview.innerHTML = '';
-                        
-                        // Add phone numbers to the preview
-                        if (extractedPhoneNumbers.length > 0) {
-                            extractedPhoneNumbers.forEach(phone => {
-                                const li = document.createElement('li');
-                                li.textContent = phone;
-                                phonePreview.appendChild(li);
-                            });
-                            
-                            previewControls.style.display = 'block';
-                        } else {
-                            const li = document.createElement('li');
-                            li.textContent = 'No valid phone numbers found in the CSV file.';
-                            phonePreview.appendChild(li);
-                            
-                            previewControls.style.display = 'none';
-                        }
-                        
-                        previewArea.style.display = 'block';
-                        showStatus(`Successfully extracted ${result.total} phone numbers from CSV`, true);
+                    const previewArea = document.getElementById('previewArea');
+                    const uploadResults = document.getElementById('uploadResults');
+                    
+                    let resultsHTML = `
+                        <p><strong>Upload Successful!</strong></p>
+                        <p>Total participants processed: ${result.total}</p>
+                        <p>Successfully saved: ${result.saved_successfully}</p>
+                    `;
+                    
+                    if (result.save_failures > 0) {
+                        resultsHTML += `<p style="color: red;">Failed to save: ${result.save_failures}</p>`;
                     }
+                    
+                    if (sendImmediately) {
+                        resultsHTML += `
+                            <p>Consent requests sent: ${result.successful_sends}</p>
+                            <p>Failed sends: ${result.failed_sends}</p>
+                        `;
+                    }
+                    
+                    uploadResults.innerHTML = resultsHTML;
+                    previewArea.style.display = 'block';
+                    
+                    showStatus(result.message, true);
+                    
+                    // Reset form
+                    document.getElementById('csvFile').value = '';
+                    document.getElementById('columnMapping').style.display = 'none';
+                    selectedFile = null;
                 } else {
                     showStatus(result.message || 'Error processing CSV file', false);
                 }
                 
             } catch (error) {
                 showStatus('Error uploading CSV: ' + error.message, false);
-            }
-        }
-
-        async function sendConsentToPreview() {
-            if (!extractedPhoneNumbers || extractedPhoneNumbers.length === 0) {
-                showStatus('No phone numbers to send consent requests to', false);
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_BASE}/send_bulk_consent`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        phone_numbers: extractedPhoneNumbers
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_numbers} phone numbers`, true);
-                } else {
-                    showStatus(result.message || 'Error sending consent requests', false);
-                }
-            } catch (error) {
-                showStatus('Error sending consent requests: ' + error.message, false);
             }
         }
 
@@ -1290,6 +1514,14 @@ def dashboard():
                         <td style="padding: 8px; border-bottom: 1px solid #ddd;">Notes</td>
                         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.notes || 'N/A'}</td>
                     </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Created At</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.created_at || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Consent Timestamp</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.consent_timestamp || 'N/A'}</td>
+                    </tr>
                 </table>
             `;
             
@@ -1349,28 +1581,6 @@ def dashboard():
                     viewParticipants();
                 }
             } catch (error) {
-                showStatus('Error clearing database: ' + error.message, false);
-            }
-        }
-
-        async function resetSurveySent() {
-            if (!confirm('Reset survey sent status for all participants?')) {
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_BASE}/reset_survey_status`, {
-                    method: 'POST'
-                });
-                
-                const result = await response.json();
-                showStatus(result.message, response.ok);
-                
-                // Refresh participants view if it's open
-                if (document.getElementById('participantsTable').style.display !== 'none') {
-                    viewParticipants();
-                }
-            } catch (error) {
                 showStatus('Error resetting survey status: ' + error.message, false);
             }
         }
@@ -1408,4 +1618,26 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     
     # Run the app
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)'s open
+                if (document.getElementById('participantsTable').style.display !== 'none') {
+                    viewParticipants();
+                }
+            } catch (error) {
+                showStatus('Error clearing database: ' + error.message, false);
+            }
+        }
+
+        async function resetSurveySent() {
+            if (!confirm('Reset survey sent status for all participants?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/reset_survey_status`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                showStatus(result.message, response.ok);
+                
+                // Refresh participants view if it
