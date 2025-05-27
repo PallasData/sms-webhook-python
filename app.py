@@ -243,20 +243,8 @@ def send_consent_request(phone_numbers):
             results["failed"].append({"phone": phone, "reason": "Invalid phone number format"})
             continue
         
-        # Add to database
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "INSERT OR IGNORE INTO participants (phone_number) VALUES (?)",
-                (phone,)
-            )
-            conn.commit()
-        except Exception as e:
-            results["failed"].append({"phone": phone, "reason": f"Database error: {str(e)}"})
-            continue
-        finally:
-            conn.close()
+        # Note: We don't need to add to database here anymore since it's already handled
+        # by store_participants_with_data function when processing CSV
         
         # Send SMS
         if send_sms(phone, consent_message):
@@ -331,7 +319,7 @@ def send_survey_link(survey_url, custom_message=None):
         time.sleep(1)  # Rate limiting
 
 def process_csv_file(file_content):
-    """Process CSV file content and extract phone numbers"""
+    """Process CSV file content and extract phone numbers with additional data"""
     try:
         # Try to decode the file content as UTF-8
         if isinstance(file_content, bytes):
@@ -343,104 +331,104 @@ def process_csv_file(file_content):
         csv_file = io.StringIO(file_content)
         
         # Try to read the CSV file
-        reader = csv.reader(csv_file)
+        reader = csv.DictReader(csv_file)
         
         # Get all rows
         rows = list(reader)
         
-        print(f"CSV DEBUGGING: CSV has {len(rows)} rows (including header)")
+        print(f"CSV DEBUGGING: CSV has {len(rows)} rows")
         
         if not rows:
             return {"status": "error", "message": "CSV file is empty"}
         
-        # Print the first few rows for debugging
-        print("CSV DEBUGGING: First 2 rows:")
-        for i, row in enumerate(rows[:2]):
-            print(f"  Row {i}: {row}")
+        # Get column names from the CSV
+        fieldnames = reader.fieldnames
+        print(f"CSV DEBUGGING: Available columns: {fieldnames}")
         
-        # Extract phone numbers
-        phone_numbers = []
+        # Look for phone number column
+        phone_column = None
+        for field in fieldnames:
+            field_lower = field.lower().strip()
+            if field_lower == 'phone_number' or any(keyword in field_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
+                phone_column = field
+                print(f"CSV DEBUGGING: Found phone column: '{field}'")
+                break
         
-        # Check the first row for headers
-        first_row = rows[0]
-        header_row = True
+        if not phone_column:
+            # Use first column as default
+            phone_column = fieldnames[0]
+            print(f"CSV DEBUGGING: Using first column as phone column: '{phone_column}'")
         
-        print(f"CSV DEBUGGING: Headers: {first_row}")
-        
-        # Look for columns that might contain phone numbers
-        phone_col_indices = []
-        for i, header in enumerate(first_row):
-            header_lower = header.lower().strip()
-            print(f"CSV DEBUGGING: Checking header '{header}' (lower: '{header_lower}')")
-            if header_lower == 'phone_number' or any(keyword in header_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
-                phone_col_indices.append(i)
-                print(f"CSV DEBUGGING: Found potential phone column: '{header}' at index {i}")
-        
-        # If we couldn't find any phone columns, maybe the first row isn't a header
-        if not phone_col_indices:
-            print("CSV DEBUGGING: No phone columns found in header row")
-            # Check if the first row might contain phone numbers itself
-            for i, cell in enumerate(first_row):
-                cell_value = str(cell).strip()
-                print(f"CSV DEBUGGING: Testing if '{cell_value}' is a valid phone number")
-                if cell_value and is_valid_phone_number(cell_value):
-                    print(f"CSV DEBUGGING: Found valid phone number in first row: {cell_value}")
-                    header_row = False
-                    phone_col_indices.append(i)
-                    break
-        
-        # If we still couldn't find phone columns, try the first column
-        if not phone_col_indices:
-            print("CSV DEBUGGING: Using first column as default phone column")
-            phone_col_indices.append(0)
-        
-        print(f"CSV DEBUGGING: Using columns at indices {phone_col_indices} for phone numbers")
-        print(f"CSV DEBUGGING: Treating first row as header: {header_row}")
-        
-        # Start from the appropriate row (skip header if we identified one)
-        start_row = 1 if header_row else 0
-        
-        # Extract phone numbers from identified columns
+        # Process each row
+        processed_data = []
         valid_phones_found = 0
         invalid_phones_found = 0
         
-        for row_idx, row in enumerate(rows[start_row:], start=start_row):
-            phone_found = False
-            for col_idx in phone_col_indices:
-                if col_idx < len(row):
-                    cell_value = str(row[col_idx]).strip()
-                    if cell_value:
-                        is_valid = is_valid_phone_number(cell_value)
-                        print(f"CSV DEBUGGING: Row {row_idx}, Column {col_idx}: '{cell_value}' Valid: {is_valid}")
-                        if is_valid:
-                            normalized = normalize_phone_number(cell_value)
-                            print(f"CSV DEBUGGING: Normalized: {normalized}")
-                            phone_numbers.append(normalized)
-                            valid_phones_found += 1
-                            phone_found = True
-                            break
-                        else:
-                            invalid_phones_found += 1
+        # Create mapping from CSV columns to database columns
+        column_mapping = {
+            'calltime': ['calltime', 'call_time', 'call time'],
+            'last_fed_vote_intent': ['lastfedvoteintent', 'last_fed_vote_intent', 'vote_intent', 'voting_intent'],
+            'gender': ['gender'],
+            'age': ['age'],
+            'education': ['education'],
+            'phone_type': ['phonetype', 'phone_type', 'phone type'],
+            'region': ['region'],
+            'notes': ['notes', 'note', 'comments']
+        }
+        
+        for row_idx, row in enumerate(rows):
+            phone_value = str(row.get(phone_column, '')).strip()
             
-            if not phone_found and row_idx < start_row + 5:  # Only log first few rows to avoid flooding logs
-                print(f"CSV DEBUGGING: No valid phone number found in row {row_idx}")
+            if not phone_value or not is_valid_phone_number(phone_value):
+                print(f"CSV DEBUGGING: Row {row_idx}: Invalid phone number '{phone_value}'")
+                invalid_phones_found += 1
+                continue
+            
+            normalized_phone = normalize_phone_number(phone_value)
+            print(f"CSV DEBUGGING: Row {row_idx}: Valid phone number '{normalized_phone}'")
+            
+            # Extract additional data
+            participant_data = {'phone_number': normalized_phone}
+            
+            # Map CSV columns to database columns
+            for db_column, csv_variations in column_mapping.items():
+                value = None
+                for csv_col in csv_variations:
+                    # Try exact match first
+                    if csv_col in row:
+                        value = str(row[csv_col]).strip()
+                        break
+                    # Try case-insensitive match
+                    for actual_col in fieldnames:
+                        if actual_col.lower() == csv_col.lower():
+                            value = str(row[actual_col]).strip()
+                            break
+                    if value:
+                        break
+                
+                if value and value.lower() not in ['', 'null', 'none', 'n/a']:
+                    participant_data[db_column] = value
+            
+            processed_data.append(participant_data)
+            valid_phones_found += 1
         
         print(f"CSV DEBUGGING: Found {valid_phones_found} valid and {invalid_phones_found} invalid phone numbers")
         
         # Remove duplicates while preserving order
-        unique_phones = []
-        seen = set()
-        for phone in phone_numbers:
-            if phone not in seen:
-                seen.add(phone)
-                unique_phones.append(phone)
+        unique_data = []
+        seen_phones = set()
+        for data in processed_data:
+            phone = data['phone_number']
+            if phone not in seen_phones:
+                seen_phones.add(phone)
+                unique_data.append(data)
         
-        print(f"CSV DEBUGGING: Returning {len(unique_phones)} unique phone numbers")
+        print(f"CSV DEBUGGING: Returning {len(unique_data)} unique participants with data")
         
         return {
             "status": "success", 
-            "phone_numbers": unique_phones,
-            "total": len(unique_phones)
+            "participants_data": unique_data,
+            "total": len(unique_data)
         }
     
     except Exception as e:
@@ -448,6 +436,59 @@ def process_csv_file(file_content):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"Error processing CSV: {str(e)}"}
+
+def store_participants_with_data(participants_data):
+    """Store participants with their additional data in the database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    results = {"success": [], "failed": []}
+    
+    try:
+        for participant in participants_data:
+            phone = participant['phone_number']
+            
+            # Prepare the update/insert query
+            columns = ['phone_number']
+            values = [phone]
+            placeholders = ['?']
+            
+            # Add additional columns if they exist
+            additional_fields = ['calltime', 'last_fed_vote_intent', 'gender', 'age', 'education', 'phone_type', 'region', 'notes']
+            
+            for field in additional_fields:
+                if field in participant and participant[field]:
+                    columns.append(field)
+                    values.append(participant[field])
+                    placeholders.append('?')
+            
+            # Create the INSERT OR REPLACE query
+            query = f"""
+                INSERT OR REPLACE INTO participants 
+                ({', '.join(columns)}, created_at) 
+                VALUES ({', '.join(placeholders)}, COALESCE(
+                    (SELECT created_at FROM participants WHERE phone_number = ?),
+                    CURRENT_TIMESTAMP
+                ))
+            """
+            
+            try:
+                cursor.execute(query, values + [phone])
+                results["success"].append(phone)
+                print(f"Successfully stored participant: {phone}")
+            except Exception as e:
+                results["failed"].append({"phone": phone, "reason": f"Database error: {str(e)}"})
+                print(f"Failed to store participant {phone}: {str(e)}")
+        
+        conn.commit()
+        
+    except Exception as e:
+        print(f"Error in store_participants_with_data: {str(e)}")
+        results["failed"].append({"phone": "unknown", "reason": f"General error: {str(e)}"})
+    finally:
+        conn.close()
+    
+    return results
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -510,7 +551,7 @@ def send_consent_endpoint():
 
 @app.route('/upload_csv', methods=['POST'])
 def upload_csv():
-    """Handle CSV upload and process phone numbers"""
+    """Handle CSV upload and process phone numbers with additional data"""
     if 'file' not in request.files:
         return jsonify({"status": "error", "message": "No file part"}), 400
     
@@ -532,33 +573,42 @@ def upload_csv():
         if result["status"] == "error":
             return jsonify(result), 400
         
+        # Store participants with their data in the database
+        store_results = store_participants_with_data(result["participants_data"])
+        
         # Check if we should send consent requests immediately
         send_immediately = request.form.get('send_immediately') == 'true'
         
-        if send_immediately and result["phone_numbers"]:
-            # Send consent requests to extracted phone numbers
-            send_results = send_consent_request(result["phone_numbers"])
+        if send_immediately and result["participants_data"]:
+            # Extract just phone numbers for sending consent requests
+            phone_numbers = [p['phone_number'] for p in result["participants_data"]]
+            send_results = send_consent_request(phone_numbers)
             
             return jsonify({
                 "status": "success",
-                "message": f"Processed CSV and sent consent requests",
-                "total_numbers": result["total"],
+                "message": f"Processed CSV with additional data and sent consent requests",
+                "total_participants": result["total"],
+                "stored_successfully": len(store_results["success"]),
+                "storage_failures": len(store_results["failed"]),
                 "successful_sends": len(send_results["success"]),
                 "failed_sends": len(send_results["failed"]),
-                "failures": send_results["failed"]
+                "send_failures": send_results["failed"],
+                "storage_failures_detail": store_results["failed"]
             })
         
-        # Just return the extracted phone numbers
+        # Just return the processing results
         return jsonify({
             "status": "success",
-            "message": f"Successfully extracted {result['total']} phone numbers from CSV",
-            "phone_numbers": result["phone_numbers"],
-            "total": result["total"]
+            "message": f"Successfully processed CSV and stored {len(store_results['success'])} participants with additional data",
+            "total_participants": result["total"],
+            "stored_successfully": len(store_results["success"]),
+            "storage_failures": len(store_results["failed"]),
+            "participants_data": result["participants_data"],  # For preview
+            "storage_failures_detail": store_results["failed"]
         })
     
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error processing file: {str(e)}"}), 500
-
 @app.route('/send_bulk_consent', methods=['POST'])
 def send_bulk_consent():
     """Send consent requests to a list of phone numbers"""
@@ -1396,6 +1446,136 @@ def dashboard():
                 }, 5000);
             }, 1000);
         }
+
+        // Updated JavaScript functions for the dashboard
+
+let extractedParticipantsData = [];
+
+async function uploadCSV() {
+    const fileInput = document.getElementById('csvFile');
+    const sendImmediately = document.getElementById('sendImmediately').checked;
+    
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showStatus('Please select a CSV file', false);
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (!file.name.endsWith('.csv')) {
+        showStatus('Please select a CSV file', false);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('send_immediately', sendImmediately);
+
+    try {
+        const response = await fetch(`${API_BASE}/upload_csv`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            if (sendImmediately) {
+                showStatus(`Successfully processed ${result.total_participants} participants and sent consent requests to ${result.successful_sends} phone numbers`, true);
+            } else {
+                // Store the extracted participants data for later use
+                extractedParticipantsData = result.participants_data;
+                
+                // Show enhanced preview
+                const previewArea = document.getElementById('previewArea');
+                const phonePreview = document.getElementById('phonePreview');
+                const previewControls = document.getElementById('previewControls');
+                
+                // Clear previous preview
+                phonePreview.innerHTML = '';
+                
+                // Add participants to the preview with additional data
+                if (extractedParticipantsData.length > 0) {
+                    extractedParticipantsData.forEach((participant, index) => {
+                        const li = document.createElement('li');
+                        li.style.marginBottom = '10px';
+                        li.style.padding = '10px';
+                        li.style.border = '1px solid #ddd';
+                        li.style.borderRadius = '5px';
+                        li.style.backgroundColor = '#f9f9f9';
+                        
+                        let participantInfo = `<strong>${participant.phone_number}</strong>`;
+                        
+                        // Add additional data if available
+                        const additionalFields = ['calltime', 'last_fed_vote_intent', 'gender', 'age', 'education', 'phone_type', 'region', 'notes'];
+                        const additionalData = [];
+                        
+                        additionalFields.forEach(field => {
+                            if (participant[field]) {
+                                const displayName = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                additionalData.push(`${displayName}: ${participant[field]}`);
+                            }
+                        });
+                        
+                        if (additionalData.length > 0) {
+                            participantInfo += `<br><small style="color: #666;">${additionalData.join(', ')}</small>`;
+                        }
+                        
+                        li.innerHTML = participantInfo;
+                        phonePreview.appendChild(li);
+                    });
+                    
+                    previewControls.style.display = 'block';
+                } else {
+                    const li = document.createElement('li');
+                    li.textContent = 'No valid phone numbers found in the CSV file.';
+                    phonePreview.appendChild(li);
+                    
+                    previewControls.style.display = 'none';
+                }
+                
+                previewArea.style.display = 'block';
+                showStatus(`Successfully processed ${result.total_participants} participants with additional data from CSV`, true);
+            }
+        } else {
+            showStatus(result.message || 'Error processing CSV file', false);
+        }
+        
+    } catch (error) {
+        showStatus('Error uploading CSV: ' + error.message, false);
+    }
+}
+
+async function sendConsentToPreview() {
+    if (!extractedParticipantsData || extractedParticipantsData.length === 0) {
+        showStatus('No participants to send consent requests to', false);
+        return;
+    }
+
+    // Extract just the phone numbers
+    const phoneNumbers = extractedParticipantsData.map(p => p.phone_number);
+
+    try {
+        const response = await fetch(`${API_BASE}/send_bulk_consent`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                phone_numbers: phoneNumbers
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_numbers} phone numbers`, true);
+        } else {
+            showStatus(result.message || 'Error sending consent requests', false);
+        }
+    } catch (error) {
+        showStatus('Error sending consent requests: ' + error.message, false);
+    }
+}
     </script>
 </body>
 </html>'''
