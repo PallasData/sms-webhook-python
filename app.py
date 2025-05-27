@@ -615,7 +615,13 @@ def send_targeted_survey(survey_url, phone_numbers, custom_message=None):
     if not phone_numbers:
         return {"status": "error", "message": "No phone numbers provided"}
     
-    message = custom_message or f"Hi! Here's your survey link: {survey_url} Thank you for participating!"
+    # Format the message properly - ALWAYS include the survey URL
+    if custom_message:
+        # If custom message provided, append the survey URL
+        message = f"{custom_message.strip()} {survey_url}"
+    else:
+        # Default message with survey URL
+        message = f"Hi! Here's your survey link: {survey_url} Thank you for participating!"
     
     results = {"success": [], "failed": []}
     
@@ -643,6 +649,45 @@ def send_targeted_survey(survey_url, phone_numbers, custom_message=None):
         time.sleep(1)  # Rate limiting
     
     return results
+
+def send_survey_link(survey_url, custom_message=None):
+    """Send survey link to consented participants"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get consented participants who haven't been sent this survey
+    cursor.execute(
+        "SELECT phone_number FROM participants WHERE consent_status = 'consented' AND survey_sent = 0"
+    )
+    participants = cursor.fetchall()
+    conn.close()
+    
+    if not participants:
+        print("No consented participants to send survey to.")
+        return
+    
+    # Format the message properly - ALWAYS include the survey URL
+    if custom_message:
+        # If custom message provided, append the survey URL
+        message = f"{custom_message.strip()} {survey_url}"
+    else:
+        # Default message with survey URL
+        message = f"Hi! Here's your survey link: {survey_url} Thank you for participating!"
+    
+    for (phone,) in participants:
+        if send_sms(phone, message):
+            # Mark as survey sent
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE participants SET survey_sent = 1 WHERE phone_number = ?",
+                (phone,)
+            )
+            conn.commit()
+            conn.close()
+        
+        import time
+        time.sleep(1)  # Rate limiting
 
 def get_filter_options():
     """Get available filter options from the database"""
@@ -844,37 +889,59 @@ def send_survey_endpoint():
     survey_url = request.form.get('survey_url')
     custom_message = request.form.get('custom_message')
     
-    if survey_url:
-        send_survey_link(survey_url, custom_message)
-        return {'status': 'success', 'message': 'Survey sent to consented participants'}
-    return {'status': 'error', 'message': 'Survey URL required'}, 400
-
-@app.route('/participants')
-def participants():
-    """Get all participants"""
+    if not survey_url:
+        return {'status': 'error', 'message': 'Survey URL required'}, 400
+    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM participants")
-    rows = cursor.fetchall()
     
-    # Get column names
-    column_names = [description[0] for description in cursor.description]
-    
-    # Create a list of dictionaries
-    participants_list = []
-    for row in rows:
-        participant_dict = {}
-        for i, value in enumerate(row):
-            participant_dict[column_names[i]] = value
-        participants_list.append(participant_dict)
-    
+    # Get consented participants who haven't been sent this survey
+    cursor.execute(
+        "SELECT phone_number FROM participants WHERE consent_status = 'consented' AND survey_sent = 0"
+    )
+    participants = cursor.fetchall()
     conn.close()
     
+    if not participants:
+        return {'status': 'success', 'message': 'No consented participants found to send survey to'}
+    
+    # Format the message properly - ALWAYS include the survey URL
+    if custom_message and custom_message.strip():
+        # If custom message provided, append the survey URL
+        message = f"{custom_message.strip()} {survey_url}"
+    else:
+        # Default message with survey URL
+        message = f"Hi! Here's your survey link: {survey_url} Thank you for participating!"
+    
+    success_count = 0
+    failed_count = 0
+    
+    for (phone,) in participants:
+        if send_sms(phone, message):
+            success_count += 1
+            # Mark as survey sent
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "UPDATE participants SET survey_sent = 1 WHERE phone_number = ?",
+                    (phone,)
+                )
+                conn.commit()
+            except Exception as e:
+                print(f"Error updating survey_sent status for {phone}: {e}")
+            finally:
+                conn.close()
+        else:
+            failed_count += 1
+        
+        import time
+        time.sleep(1)  # Rate limiting
+    
     return {
-        'status': 'success',
-        'data': participants_list
+        'status': 'success', 
+        'message': f'Survey sent to {success_count} participants. {failed_count} failed.'
     }
-
 @app.route('/search_participants', methods=['POST'])
 def search_participants_endpoint():
     """Search participants based on filters"""
