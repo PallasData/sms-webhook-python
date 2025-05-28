@@ -1389,6 +1389,7 @@ def participants():
             conn.close()
 
 @app.route('/')
+@app.route('/')
 def dashboard():
     """Serve the dashboard HTML"""
     return '''<!DOCTYPE html>
@@ -1429,7 +1430,7 @@ def dashboard():
             margin-bottom: 5px;
             font-weight: bold;
         }
-        input[type="text"], input[type="url"], textarea, input[type="file"] {
+        input[type="text"], input[type="url"], textarea, input[type="file"], input[type="number"], select {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
@@ -1480,39 +1481,6 @@ def dashboard():
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
-        .form-row {
-            display: flex;
-            gap: 10px;
-        }
-        .form-row input {
-            flex: 1;
-        }
-        .checkbox-group {
-            margin: 10px 0;
-        }
-        .checkbox-group label {
-            display: inline;
-            font-weight: normal;
-            margin-left: 5px;
-        }
-        .preview-area {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #f8f9fa;
-            max-height: 300px;
-            overflow-y: auto;
-            display: none;
-        }
-        .preview-header {
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .preview-list {
-            margin: 0;
-            padding-left: 20px;
-        }
         .tabs {
             display: flex;
             margin-bottom: 20px;
@@ -1555,6 +1523,25 @@ def dashboard():
         tr:nth-child(even) {
             background-color: #f9f9f9;
         }
+        .preview-area {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        .phone-number-item {
+            display: inline-block;
+            margin: 2px 5px;
+            padding: 3px 8px;
+            background-color: #e9ecef;
+            border-radius: 12px;
+            font-size: 12px;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
@@ -1567,9 +1554,9 @@ def dashboard():
             <div class="tab" onclick="openTab(event, 'tab-mass-sms')">Mass SMS</div>
             <div class="tab" onclick="openTab(event, 'tab-survey')">Send Survey</div>
             <div class="tab" onclick="openTab(event, 'tab-manage')">Manage Data</div>
-            
         </div>
         
+        <!-- Single Number Tab -->
         <div id="tab-single" class="tab-content active">
             <div class="section">
                 <h2>Send Consent Request to Single Number</h2>
@@ -1581,6 +1568,7 @@ def dashboard():
             </div>
         </div>
         
+        <!-- CSV Upload Tab -->
         <div id="tab-csv" class="tab-content">
             <div class="section">
                 <h2>Upload CSV with Phone Numbers</h2>
@@ -1593,320 +1581,101 @@ def dashboard():
                         it will use the first column.
                     </p>
                 </div>
-                <div class="checkbox-group">
+                <div style="margin: 10px 0;">
                     <input type="checkbox" id="sendImmediately">
-                    <label for="sendImmediately">Send consent requests immediately after upload</label>
+                    <label for="sendImmediately" style="display: inline; font-weight: normal; margin-left: 5px;">Send consent requests immediately after upload</label>
                 </div>
                 <button onclick="uploadCSV()">Upload CSV</button>
                 
                 <div id="previewArea" class="preview-area">
-                    <div class="preview-header">Phone Numbers Preview:</div>
-                    <ul id="phonePreview" class="preview-list"></ul>
+                    <div style="font-weight: bold; margin-bottom: 10px;">Phone Numbers Preview:</div>
+                    <ul id="phonePreview" style="margin: 0; padding-left: 20px;"></ul>
                     <div id="previewControls" style="margin-top: 15px; display: none;">
                         <button onclick="sendConsentToPreview()">Send Consent Requests to These Numbers</button>
                     </div>
                 </div>
             </div>
         </div>
-<div id="tab-mass-sms" class="tab-content">
-    <div class="section">
-        <h2>📱 Mass SMS Service</h2>
-        <p style="color: #666; margin-bottom: 20px;">
-            Send custom SMS messages to a list of phone numbers from a CSV file. 
-            <strong>Note:</strong> This service sends messages directly without requiring consent - use responsibly and ensure compliance with local regulations.
-        </p>
         
-        <!-- Step 1: Upload CSV -->
-        <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
-            <h3 style="margin-top: 0;">Step 1: Upload Phone Numbers</h3>
-            <div class="form-group">
-                <label for="massSmsFile">Select CSV file with phone numbers:</label>
-                <input type="file" id="massSmsFile" accept=".csv">
-                <p style="color: #6c757d; font-size: 14px; margin-top: 5px;">
-                    CSV should contain a column with phone numbers (e.g., "phone", "mobile", "number").
+        <!-- Mass SMS Tab -->
+        <div id="tab-mass-sms" class="tab-content">
+            <div class="section">
+                <h2>📱 Mass SMS Service</h2>
+                <p style="color: #666; margin-bottom: 20px;">
+                    Send custom SMS messages to a list of phone numbers from a CSV file. 
+                    <strong>Note:</strong> This service sends messages directly without requiring consent - use responsibly.
                 </p>
-            </div>
-            <button onclick="uploadMassSmsCSV()" style="background-color: #17a2b8;">📂 Upload & Preview Numbers</button>
-            
-            <!-- Phone Numbers Preview -->
-            <div id="massSmsPreview" class="preview-area" style="display: none;">
-                <div class="preview-header">📋 Phone Numbers Preview (<span id="massSmsCount">0</span> numbers found):</div>
-                <div id="massSmsPhoneList" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 3px; background-color: white;">
-                    <!-- Phone numbers will be listed here -->
-                </div>
-            </div>
-        </div>
-        
-        <!-- Step 2: Compose Message -->
-        <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
-            <h3 style="margin-top: 0;">Step 2: Compose Your Message</h3>
-            <div class="form-group">
-                <label for="massSmsMessage">Message Text:</label>
-                <textarea id="massSmsMessage" rows="4" placeholder="Enter your message here..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical;"></textarea>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                    <span id="charCount" style="color: #666; font-size: 14px;">0 characters</span>
-                    <span style="color: #666; font-size: 12px;">💡 SMS limit: 160 characters per message</span>
-                </div>
-            </div>
-            
-            <!-- Message Preview -->
-            <div style="margin-top: 15px; padding: 10px; background-color: white; border: 1px solid #ddd; border-radius: 5px;">
-                <strong>Message Preview:</strong>
-                <div id="messagePreview" style="margin-top: 5px; padding: 8px; background-color: #e9ecef; border-radius: 3px; font-family: monospace; min-height: 20px; white-space: pre-wrap;">
-                    Your message will appear here...
-                </div>
-            </div>
-        </div>
-        
-        <!-- Step 3: Send -->
-        <div style="margin-bottom: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #fff3cd;">
-            <h3 style="margin-top: 0;">Step 3: Send Mass SMS</h3>
-            <div style="margin-bottom: 15px;">
-                <strong>Ready to send:</strong>
-                <div id="sendSummary" style="margin-top: 5px; color: #666;">
-                    Upload a CSV file and write a message to get started.
-                </div>
-            </div>
-            
-            <div style="text-align: center;">
-                <button id="sendMassSmsBtn" onclick="sendMassSMS()" disabled style="background-color: #28a745; font-size: 18px; padding: 15px 30px; border: none; border-radius: 5px; color: white; cursor: not-allowed; opacity: 0.6;">
-                    🚀 Send Mass SMS
-                </button>
-            </div>
-            
-            <div style="margin-top: 10px; padding: 10px; background-color: #fff; border: 1px solid #ffc107; border-radius: 3px; font-size: 14px;">
-                <strong>⚠️ Important:</strong> Mass SMS will be sent immediately. Please ensure:
-                <ul style="margin: 5px 0 0 20px; padding: 0;">
-                    <li>You have permission to contact these numbers</li>
-                    <li>Your message complies with local SMS regulations</li>
-                    <li>You've reviewed the recipient list and message content</li>
-                </ul>
-            </div>
-        </div>
-        
-        <!-- Results -->
-        <div id="massSmsResults" style="display: none; margin-top: 20px; padding: 15px; border-radius: 5px;">
-            <h3>📊 Send Results</h3>
-            <div id="massSmsResultsContent">
-                <!-- Results will be populated here -->
-            </div>
-        </div>
-    </div>
-</div>
-
-<style>
-#massSmsMessage {
-    font-family: Arial, sans-serif;
-    line-height: 1.4;
-}
-
-.char-warning {
-    color: #dc3545 !important;
-    font-weight: bold;
-}
-
-.char-over-limit {
-    background-color: #f8d7da !important;
-    border-color: #f5c6cb !important;
-}
-
-#sendMassSmsBtn:not(:disabled) {
-    cursor: pointer !important;
-    opacity: 1 !important;
-}
-
-#sendMassSmsBtn:not(:disabled):hover {
-    background-color: #218838 !important;
-}
-
-.phone-number-item {
-    display: inline-block;
-    margin: 2px 5px;
-    padding: 3px 8px;
-    background-color: #e9ecef;
-    border-radius: 12px;
-    font-size: 12px;
-    font-family: monospace;
-}
-</style>        
-        <!-- Enhanced Survey Tab Content -->
-<div id="tab-survey" class="tab-content">
-    <div class="section">
-        <h2>Send Survey Link</h2>
-        
-        <!-- Survey Details -->
-        <div class="form-group">
-            <label for="surveyUrl">Survey URL:</label>
-            <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
-        </div>
-        <div class="form-group">
-            <label for="customMessage">Custom Message (optional):</label>
-            <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
-        </div>
-        
-        <!-- Survey Target Selection -->
-        <div style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
-            <h3 style="margin-top: 0;">Target Audience</h3>
-            
-            <div class="form-row" style="margin-bottom: 15px;">
-                <button type="button" onclick="toggleTargetingMode('all')" id="targetAll" class="targeting-btn active">Send to All Consented</button>
-                <button type="button" onclick="toggleTargetingMode('search')" id="targetSearch" class="targeting-btn">Search & Filter</button>
-            </div>
-            
-            <!-- Search Interface (Hidden by default) -->
-            <div id="searchInterface" style="display: none;">
-                <div class="search-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                
+                <!-- Step 1: Upload CSV -->
+                <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
+                    <h3 style="margin-top: 0;">Step 1: Upload Phone Numbers</h3>
                     <div class="form-group">
-                        <label for="filterGender">Gender:</label>
-                        <select id="filterGender">
-                            <option value="">Any</option>
-                        </select>
+                        <label for="massSmsFile">Select CSV file with phone numbers:</label>
+                        <input type="file" id="massSmsFile" accept=".csv">
                     </div>
+                    <button onclick="uploadMassSmsCSV()" style="background-color: #17a2b8;">📂 Upload & Preview Numbers</button>
                     
-                    <div class="form-group">
-                        <label for="filterRegion">Region:</label>
-                        <select id="filterRegion">
-                            <option value="">Any</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="filterEducation">Education:</label>
-                        <select id="filterEducation">
-                            <option value="">Any</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="filterPhoneType">Phone Type:</label>
-                        <select id="filterPhoneType">
-                            <option value="">Any</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="filterVoteIntent">Voting Intent:</label>
-                        <select id="filterVoteIntent">
-                            <option value="">Any</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="filterSurveySent">Survey Status:</label>
-                        <select id="filterSurveySent">
-                            <option value="">Any</option>
-                            <option value="false">Not sent survey</option>
-                            <option value="true">Already sent survey</option>
-                        </select>
+                    <div id="massSmsPreview" class="preview-area">
+                        <div style="font-weight: bold; margin-bottom: 10px;">📋 Phone Numbers Preview (<span id="massSmsCount">0</span> numbers found):</div>
+                        <div id="massSmsPhoneList" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 3px; background-color: white;"></div>
                     </div>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <!-- Step 2: Compose Message -->
+                <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
+                    <h3 style="margin-top: 0;">Step 2: Compose Your Message</h3>
                     <div class="form-group">
-                        <label for="filterAgeMin">Min Age:</label>
-                        <input type="number" id="filterAgeMin" placeholder="18" min="18" max="100">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="filterAgeMax">Max Age:</label>
-                        <input type="number" id="filterAgeMax" placeholder="100" min="18" max="100">
-                    </div>
-                </div>
-                
-                <div style="text-align: center; margin-bottom: 15px;">
-                    <button onclick="searchParticipants()" style="background-color: #17a2b8; margin-right: 10px;">🔍 Search Participants</button>
-                    <button onclick="clearFilters()" style="background-color: #6c757d;">Clear Filters</button>
-                </div>
-                
-                <!-- Search Results -->
-                <div id="searchResults" style="display: none; margin-top: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <h4 style="margin: 0;">Search Results: <span id="resultCount">0</span> participants</h4>
-                        <div>
-                            <button onclick="selectAllResults()" style="background-color: #28a745; font-size: 12px; padding: 5px 10px;">Select All</button>
-                            <button onclick="deselectAllResults()" style="background-color: #dc3545; font-size: 12px; padding: 5px 10px;">Deselect All</button>
+                        <label for="massSmsMessage">Message Text:</label>
+                        <textarea id="massSmsMessage" rows="4" placeholder="Enter your message here..."></textarea>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                            <span id="charCount" style="color: #666; font-size: 14px;">0 characters</span>
+                            <span style="color: #666; font-size: 12px;">💡 SMS limit: 160 characters per message</span>
                         </div>
                     </div>
                     
-                    <div id="participantsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background-color: white; border-radius: 5px;">
-                        <!-- Results will be populated here -->
+                    <div style="margin-top: 15px; padding: 10px; background-color: white; border: 1px solid #ddd; border-radius: 5px;">
+                        <strong>Message Preview:</strong>
+                        <div id="messagePreview" style="margin-top: 5px; padding: 8px; background-color: #e9ecef; border-radius: 3px; font-family: monospace; min-height: 20px; white-space: pre-wrap;">Your message will appear here...</div>
                     </div>
+                </div>
+                
+                <!-- Step 3: Send -->
+                <div style="margin-bottom: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #fff3cd;">
+                    <h3 style="margin-top: 0;">Step 3: Send Mass SMS</h3>
+                    <div style="margin-bottom: 15px;">
+                        <strong>Ready to send:</strong>
+                        <div id="sendSummary" style="margin-top: 5px; color: #666;">Upload a CSV file and write a message to get started.</div>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <button id="sendMassSmsBtn" onclick="sendMassSMS()" disabled style="background-color: #28a745; font-size: 18px; padding: 15px 30px; opacity: 0.6;">🚀 Send Mass SMS</button>
+                    </div>
+                </div>
+                
+                <div id="massSmsResults" style="display: none; margin-top: 20px; padding: 15px; border-radius: 5px;">
+                    <h3>📊 Send Results</h3>
+                    <div id="massSmsResultsContent"></div>
                 </div>
             </div>
         </div>
         
-        <!-- Action Buttons -->
-        <div style="text-align: center; margin-top: 20px;">
-            <button onclick="sendSurvey()" id="sendSurveyBtn" style="background-color: #007bff; font-size: 18px; padding: 15px 30px;">📧 Send Survey</button>
+        <!-- Send Survey Tab -->
+        <div id="tab-survey" class="tab-content">
+            <div class="section">
+                <h2>Send Survey Link</h2>
+                <div class="form-group">
+                    <label for="surveyUrl">Survey URL:</label>
+                    <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
+                </div>
+                <div class="form-group">
+                    <label for="customMessage">Custom Message (optional):</label>
+                    <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
+                </div>
+                <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
+            </div>
         </div>
-    </div>
-</div>
-
-<style>
-.targeting-btn {
-    background-color: #6c757d;
-    color: white;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    margin-right: 10px;
-}
-
-.targeting-btn.active {
-    background-color: #007bff;
-}
-
-.targeting-btn:hover {
-    opacity: 0.8;
-}
-
-.participant-item {
-    padding: 10px;
-    margin-bottom: 8px;
-    border: 1px solid #e0e0e0;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.participant-item:hover {
-    background-color: #e9ecef;
-}
-
-.participant-item.selected {
-    background-color: #d4edda;
-    border-color: #28a745;
-}
-
-.participant-item input[type="checkbox"] {
-    margin-right: 10px;
-}
-
-.participant-main {
-    font-weight: bold;
-    margin-bottom: 5px;
-}
-
-.participant-details {
-    font-size: 12px;
-    color: #666;
-}
-
-.search-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
-}
-
-@media (max-width: 768px) {
-    .search-grid {
-        grid-template-columns: 1fr;
-    }
-}
-</style>
         
+        <!-- Manage Data Tab -->
         <div id="tab-manage" class="tab-content">
             <div class="section">
                 <h2>Manage Participants</h2>
@@ -1915,18 +1684,17 @@ def dashboard():
                     <button onclick="exportData()">Export Data to CSV</button>
                 </div>
                 <div id="participantsTable" style="margin-top: 20px; display: none;">
-                    <table id="participantsData" style="width: 100%; border-collapse: collapse;">
+                    <table>
                         <thead>
                             <tr style="background-color: #f8f9fa;">
-                                <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Additional Data</th>
+                                <th>Phone Number</th>
+                                <th>Consent Status</th>
+                                <th>Email</th>
+                                <th>Survey Sent</th>
+                                <th>Additional Data</th>
                             </tr>
                         </thead>
-                        <tbody id="participantsBody">
-                        </tbody>
+                        <tbody id="participantsBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -1953,21 +1721,19 @@ def dashboard():
     <script>
         const API_BASE = window.location.origin;
         let extractedPhoneNumbers = [];
+        let massSmsPhoneNumbers = [];
 
         function openTab(evt, tabName) {
-            // Hide all tab content
             const tabContents = document.getElementsByClassName("tab-content");
             for (let i = 0; i < tabContents.length; i++) {
                 tabContents[i].classList.remove("active");
             }
             
-            // Remove active class from all tabs
             const tabs = document.getElementsByClassName("tab");
             for (let i = 0; i < tabs.length; i++) {
                 tabs[i].classList.remove("active");
             }
             
-            // Show the selected tab content and add active class to the tab
             document.getElementById(tabName).classList.add("active");
             evt.currentTarget.classList.add("active");
         }
@@ -1988,16 +1754,12 @@ def dashboard():
                 showStatus('Please enter a phone number', false);
                 return;
             }
-
             try {
                 const response = await fetch(`${API_BASE}/send_consent`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `phone_number=${encodeURIComponent(phone)}`
                 });
-                
                 const result = await response.json();
                 showStatus(result.message, response.ok);
             } catch (error) {
@@ -2014,14 +1776,8 @@ def dashboard():
                 return;
             }
 
-            const file = fileInput.files[0];
-            if (!file.name.endsWith('.csv')) {
-                showStatus('Please select a CSV file', false);
-                return;
-            }
-
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', fileInput.files[0]);
             formData.append('send_immediately', sendImmediately);
 
             try {
@@ -2029,48 +1785,35 @@ def dashboard():
                     method: 'POST',
                     body: formData
                 });
-                
                 const result = await response.json();
                 
                 if (response.ok) {
                     if (sendImmediately) {
-                        showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_numbers} phone numbers`, true);
+                        showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_participants} phone numbers`, true);
                     } else {
-                        // Store the extracted phone numbers for later use
-                        extractedPhoneNumbers = result.phone_numbers;
+                        extractedPhoneNumbers = result.participants_data ? result.participants_data.map(p => p.phone_number) : [];
                         
-                        // Show preview
                         const previewArea = document.getElementById('previewArea');
                         const phonePreview = document.getElementById('phonePreview');
                         const previewControls = document.getElementById('previewControls');
                         
-                        // Clear previous preview
                         phonePreview.innerHTML = '';
                         
-                        // Add phone numbers to the preview
                         if (extractedPhoneNumbers.length > 0) {
                             extractedPhoneNumbers.forEach(phone => {
                                 const li = document.createElement('li');
                                 li.textContent = phone;
                                 phonePreview.appendChild(li);
                             });
-                            
                             previewControls.style.display = 'block';
-                        } else {
-                            const li = document.createElement('li');
-                            li.textContent = 'No valid phone numbers found in the CSV file.';
-                            phonePreview.appendChild(li);
-                            
-                            previewControls.style.display = 'none';
                         }
                         
                         previewArea.style.display = 'block';
-                        showStatus(`Successfully extracted ${result.total} phone numbers from CSV`, true);
+                        showStatus(`Successfully extracted ${extractedPhoneNumbers.length} phone numbers from CSV`, true);
                     }
                 } else {
                     showStatus(result.message || 'Error processing CSV file', false);
                 }
-                
             } catch (error) {
                 showStatus('Error uploading CSV: ' + error.message, false);
             }
@@ -2085,14 +1828,9 @@ def dashboard():
             try {
                 const response = await fetch(`${API_BASE}/send_bulk_consent`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        phone_numbers: extractedPhoneNumbers
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone_numbers: extractedPhoneNumbers })
                 });
-                
                 const result = await response.json();
                 
                 if (response.ok) {
@@ -2105,6 +1843,148 @@ def dashboard():
             }
         }
 
+        // Mass SMS functions
+        async function uploadMassSmsCSV() {
+            const fileInput = document.getElementById('massSmsFile');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showStatus('Please select a CSV file', false);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch(`${API_BASE}/mass_sms_upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    massSmsPhoneNumbers = result.phone_numbers;
+                    displayMassSmsPreview(result.phone_numbers);
+                    updateSendSummary();
+                    showStatus(`Successfully loaded ${result.total} phone numbers from CSV`, true);
+                } else {
+                    showStatus(result.message || 'Error processing CSV file', false);
+                }
+            } catch (error) {
+                showStatus('Error uploading CSV: ' + error.message, false);
+            }
+        }
+
+        function displayMassSmsPreview(phoneNumbers) {
+            const previewDiv = document.getElementById('massSmsPreview');
+            const countSpan = document.getElementById('massSmsCount');
+            const phoneList = document.getElementById('massSmsPhoneList');
+            
+            countSpan.textContent = phoneNumbers.length;
+            phoneList.innerHTML = '';
+            
+            if (phoneNumbers.length > 0) {
+                phoneNumbers.forEach(phone => {
+                    const span = document.createElement('span');
+                    span.className = 'phone-number-item';
+                    span.textContent = phone;
+                    phoneList.appendChild(span);
+                });
+                previewDiv.style.display = 'block';
+            } else {
+                previewDiv.style.display = 'none';
+            }
+        }
+
+        function updateSendSummary() {
+            const sendSummary = document.getElementById('sendSummary');
+            const sendBtn = document.getElementById('sendMassSmsBtn');
+            const message = document.getElementById('massSmsMessage') ? document.getElementById('massSmsMessage').value : '';
+            
+            if (massSmsPhoneNumbers.length > 0 && message.trim()) {
+                const messageCount = message.length > 160 ? Math.ceil(message.length / 160) : 1;
+                const totalSms = massSmsPhoneNumbers.length * messageCount;
+                
+                sendSummary.innerHTML = `<strong>${massSmsPhoneNumbers.length}</strong> recipients × <strong>${messageCount}</strong> SMS = <strong>${totalSms}</strong> total messages`;
+                
+                sendBtn.disabled = false;
+                sendBtn.style.opacity = '1';
+            } else {
+                sendSummary.textContent = 'Upload a CSV file and write a message to get started.';
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.6';
+            }
+        }
+
+        async function sendMassSMS() {
+            const message = document.getElementById('massSmsMessage').value.trim();
+            
+            if (massSmsPhoneNumbers.length === 0) {
+                showStatus('Please upload a CSV file with phone numbers first', false);
+                return;
+            }
+            
+            if (!message) {
+                showStatus('Please enter a message to send', false);
+                return;
+            }
+            
+            const confirmed = confirm(`Send this message to ${massSmsPhoneNumbers.length} recipients?`);
+            if (!confirmed) return;
+            
+            const sendBtn = document.getElementById('sendMassSmsBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = '📤 Sending...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/send_mass_sms`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone_numbers: massSmsPhoneNumbers,
+                        message: message
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    showStatus(`Mass SMS sent successfully to ${result.successful_sends} recipients!`, true);
+                    
+                    // Clear form
+                    document.getElementById('massSmsMessage').value = '';
+                    document.getElementById('massSmsFile').value = '';
+                    massSmsPhoneNumbers = [];
+                    document.getElementById('massSmsPreview').style.display = 'none';
+                } else {
+                    showStatus(result.message || 'Error sending mass SMS', false);
+                }
+            } catch (error) {
+                showStatus('Error sending mass SMS: ' + error.message, false);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '🚀 Send Mass SMS';
+                updateSendSummary();
+            }
+        }
+
+        // Initialize character counter for mass SMS
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageTextarea = document.getElementById('massSmsMessage');
+            if (messageTextarea) {
+                messageTextarea.addEventListener('input', function() {
+                    const charCount = document.getElementById('charCount');
+                    const messagePreview = document.getElementById('messagePreview');
+                    const message = this.value;
+                    
+                    if (charCount) charCount.textContent = `${message.length} characters`;
+                    if (messagePreview) messagePreview.textContent = message || 'Your message will appear here...';
+                    
+                    updateSendSummary();
+                });
+            }
+        });
+
         async function sendSurvey() {
             const surveyUrl = document.getElementById('surveyUrl').value;
             const customMessage = document.getElementById('customMessage').value;
@@ -2116,14 +1996,11 @@ def dashboard():
 
             try {
                 const body = `survey_url=${encodeURIComponent(surveyUrl)}`;
-                const fullBody = customMessage ? 
-                    `${body}&custom_message=${encodeURIComponent(customMessage)}` : body;
+                const fullBody = customMessage ? `${body}&custom_message=${encodeURIComponent(customMessage)}` : body;
                 
                 const response = await fetch(`${API_BASE}/send_survey`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: fullBody
                 });
                 
@@ -2151,7 +2028,6 @@ def dashboard():
                             row.insertCell(2).textContent = participant.email || 'N/A';
                             row.insertCell(3).textContent = participant.survey_sent ? 'Yes' : 'No';
                             
-                            // Add button to view additional data
                             const additionalCell = row.insertCell(4);
                             const viewButton = document.createElement('button');
                             viewButton.textContent = 'View Data';
@@ -2177,86 +2053,35 @@ def dashboard():
                 showStatus('Error fetching participants: ' + error.message, false);
             }
         }
-        
+
         function showAdditionalData(participant) {
-            // Create a modal to show additional data
             const modal = document.createElement('div');
-            modal.style.position = 'fixed';
-            modal.style.top = '0';
-            modal.style.left = '0';
-            modal.style.width = '100%';
-            modal.style.height = '100%';
-            modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
-            modal.style.display = 'flex';
-            modal.style.justifyContent = 'center';
-            modal.style.alignItems = 'center';
-            modal.style.zIndex = '1000';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:1000';
             
             const content = document.createElement('div');
-            content.style.backgroundColor = 'white';
-            content.style.padding = '20px';
-            content.style.borderRadius = '5px';
-            content.style.width = '80%';
-            content.style.maxWidth = '600px';
-            content.style.maxHeight = '80%';
-            content.style.overflowY = 'auto';
-            
-            const closeBtn = document.createElement('button');
-            closeBtn.textContent = 'Close';
-            closeBtn.style.float = 'right';
-            closeBtn.onclick = () => document.body.removeChild(modal);
+            content.style.cssText = 'background:white;padding:20px;border-radius:5px;width:80%;max-width:600px;max-height:80%;overflow-y:auto';
             
             content.innerHTML = `
                 <h3>Additional Data for ${participant.phone_number}</h3>
-                <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-                    <tr>
-                        <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Field</th>
-                        <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Value</th>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Call Time</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.calltime || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Last Federal Vote Intent</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.last_fed_vote_intent || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Gender</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.gender || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Age</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.age || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Education</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.education || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Phone Type</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.phone_type || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Region</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.region || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">Notes</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${participant.notes || 'N/A'}</td>
-                    </tr>
+                <button onclick="document.body.removeChild(this.closest('div[style*=\"position:fixed\"]'))" style="float:right;">Close</button>
+                <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+                    <tr><th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">Field</th><th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">Value</th></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Call Time</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.calltime || 'N/A'}</td></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Vote Intent</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.last_fed_vote_intent || 'N/A'}</td></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Gender</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.gender || 'N/A'}</td></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Age</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.age || 'N/A'}</td></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Education</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.education || 'N/A'}</td></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Phone Type</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.phone_type || 'N/A'}</td></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Region</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.region || 'N/A'}</td></tr>
+                    <tr><td style="padding:8px;border-bottom:1px solid #ddd;">Notes</td><td style="padding:8px;border-bottom:1px solid #ddd;">${participant.notes || 'N/A'}</td></tr>
                 </table>
             `;
             
-            content.appendChild(closeBtn);
             modal.appendChild(content);
             document.body.appendChild(modal);
             
-            // Close when clicking outside the modal
             modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    document.body.removeChild(modal);
-                }
+                if (e.target === modal) document.body.removeChild(modal);
             });
         }
 
@@ -2299,7 +2124,6 @@ def dashboard():
                 const result = await response.json();
                 showStatus(result.message, response.ok);
                 
-                // Refresh participants view if it's open
                 if (document.getElementById('participantsTable').style.display !== 'none') {
                     viewParticipants();
                 }
@@ -2321,7 +2145,6 @@ def dashboard():
                 const result = await response.json();
                 showStatus(result.message, response.ok);
                 
-                // Refresh participants view if it's open
                 if (document.getElementById('participantsTable').style.display !== 'none') {
                     viewParticipants();
                 }
@@ -2333,731 +2156,19 @@ def dashboard():
         function exportData() {
             showStatus('Starting data export...', true);
             
-            // Create a hidden iframe to trigger the download without navigating away
             const iframe = document.createElement('iframe');
             iframe.style.display = 'none';
             document.body.appendChild(iframe);
             
-            // Set the source to the export endpoint
             iframe.src = `${API_BASE}/export_data`;
             
-            // Notify the user
             setTimeout(() => {
                 showStatus('Download started. Check your downloads folder.', true);
-                
-                // Clean up the iframe after download has started
                 setTimeout(() => {
                     document.body.removeChild(iframe);
                 }, 5000);
             }, 1000);
         }
-
-        // Updated JavaScript functions for the dashboard
-
-let extractedParticipantsData = [];
-
-async function uploadCSV() {
-    const fileInput = document.getElementById('csvFile');
-    const sendImmediately = document.getElementById('sendImmediately').checked;
-    
-    if (!fileInput.files || fileInput.files.length === 0) {
-        showStatus('Please select a CSV file', false);
-        return;
-    }
-
-    const file = fileInput.files[0];
-    if (!file.name.endsWith('.csv')) {
-        showStatus('Please select a CSV file', false);
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('send_immediately', sendImmediately);
-
-    try {
-        const response = await fetch(`${API_BASE}/upload_csv`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-            if (sendImmediately) {
-                showStatus(`Successfully processed ${result.total_participants} participants and sent consent requests to ${result.successful_sends} phone numbers`, true);
-            } else {
-                // Store the extracted participants data for later use
-                extractedParticipantsData = result.participants_data;
-                
-                // Show enhanced preview
-                const previewArea = document.getElementById('previewArea');
-                const phonePreview = document.getElementById('phonePreview');
-                const previewControls = document.getElementById('previewControls');
-                
-                // Clear previous preview
-                phonePreview.innerHTML = '';
-                
-                // Add participants to the preview with additional data
-                if (extractedParticipantsData.length > 0) {
-                    extractedParticipantsData.forEach((participant, index) => {
-                        const li = document.createElement('li');
-                        li.style.marginBottom = '10px';
-                        li.style.padding = '10px';
-                        li.style.border = '1px solid #ddd';
-                        li.style.borderRadius = '5px';
-                        li.style.backgroundColor = '#f9f9f9';
-                        
-                        let participantInfo = `<strong>${participant.phone_number}</strong>`;
-                        
-                        // Add additional data if available
-                        const additionalFields = ['calltime', 'last_fed_vote_intent', 'gender', 'age', 'education', 'phone_type', 'region', 'notes'];
-                        const additionalData = [];
-                        
-                        additionalFields.forEach(field => {
-                            if (participant[field]) {
-                                const displayName = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                additionalData.push(`${displayName}: ${participant[field]}`);
-                            }
-                        });
-                        
-                        if (additionalData.length > 0) {
-                            participantInfo += `<br><small style="color: #666;">${additionalData.join(', ')}</small>`;
-                        }
-                        
-                        li.innerHTML = participantInfo;
-                        phonePreview.appendChild(li);
-                    });
-                    
-                    previewControls.style.display = 'block';
-                } else {
-                    const li = document.createElement('li');
-                    li.textContent = 'No valid phone numbers found in the CSV file.';
-                    phonePreview.appendChild(li);
-                    
-                    previewControls.style.display = 'none';
-                }
-                
-                previewArea.style.display = 'block';
-                showStatus(`Successfully processed ${result.total_participants} participants with additional data from CSV`, true);
-            }
-        } else {
-            showStatus(result.message || 'Error processing CSV file', false);
-        }
-        
-    } catch (error) {
-        showStatus('Error uploading CSV: ' + error.message, false);
-    }
-}
-
-async function sendConsentToPreview() {
-    if (!extractedParticipantsData || extractedParticipantsData.length === 0) {
-        showStatus('No participants to send consent requests to', false);
-        return;
-    }
-
-    // Extract just the phone numbers
-    const phoneNumbers = extractedParticipantsData.map(p => p.phone_number);
-
-    try {
-        const response = await fetch(`${API_BASE}/send_bulk_consent`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                phone_numbers: phoneNumbers
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-            showStatus(`Successfully sent consent requests to ${result.successful_sends} out of ${result.total_numbers} phone numbers`, true);
-        } else {
-            showStatus(result.message || 'Error sending consent requests', false);
-        }
-    } catch (error) {
-        showStatus('Error sending consent requests: ' + error.message, false);
-    }
-}
-
-let currentTargetingMode = 'all';
-let searchResults = [];
-let selectedParticipants = [];
-
-// Initialize the survey tab
-async function initializeSurveyTab() {
-    await loadFilterOptions();
-}
-
-// Load filter options from the server
-async function loadFilterOptions() {
-    try {
-        const response = await fetch(`${API_BASE}/filter_options`);
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            const options = result.options;
-            
-            // Populate dropdowns
-            populateSelect('filterGender', options.genders);
-            populateSelect('filterRegion', options.regions);
-            populateSelect('filterEducation', options.education_levels);
-            populateSelect('filterPhoneType', options.phone_types);
-            populateSelect('filterVoteIntent', options.vote_intents);
-            
-            // Set age range
-            if (options.age_range) {
-                document.getElementById('filterAgeMin').placeholder = options.age_range.min.toString();
-                document.getElementById('filterAgeMax').placeholder = options.age_range.max.toString();
-            }
-        }
-    } catch (error) {
-        console.error('Error loading filter options:', error);
-    }
-}
-
-function populateSelect(selectId, options) {
-    const select = document.getElementById(selectId);
-    const currentValue = select.value;
-    
-    // Clear existing options (except "Any")
-    while (select.children.length > 1) {
-        select.removeChild(select.lastChild);
-    }
-    
-    // Add new options
-    options.forEach(option => {
-        const optionElement = document.createElement('option');
-        optionElement.value = option;
-        optionElement.textContent = option;
-        select.appendChild(optionElement);
-    });
-    
-    // Restore previous selection if it still exists
-    if (currentValue && options.includes(currentValue)) {
-        select.value = currentValue;
-    }
-}
-
-function toggleTargetingMode(mode) {
-    currentTargetingMode = mode;
-    
-    const targetAllBtn = document.getElementById('targetAll');
-    const targetSearchBtn = document.getElementById('targetSearch');
-    const searchInterface = document.getElementById('searchInterface');
-    
-    if (mode === 'all') {
-        targetAllBtn.classList.add('active');
-        targetSearchBtn.classList.remove('active');
-        searchInterface.style.display = 'none';
-    } else {
-        targetAllBtn.classList.remove('active');
-        targetSearchBtn.classList.add('active');
-        searchInterface.style.display = 'block';
-    }
-    
-    updateSendButton();
-}
-
-async function searchParticipants() {
-    const filters = {
-        gender: document.getElementById('filterGender').value,
-        region: document.getElementById('filterRegion').value,
-        education: document.getElementById('filterEducation').value,
-        phone_type: document.getElementById('filterPhoneType').value,
-        vote_intent: document.getElementById('filterVoteIntent').value,
-        age_min: document.getElementById('filterAgeMin').value,
-        age_max: document.getElementById('filterAgeMax').value,
-        survey_sent: document.getElementById('filterSurveySent').value === '' ? null : 
-                    document.getElementById('filterSurveySent').value === 'true'
-    };
-    
-    try {
-        const response = await fetch(`${API_BASE}/search_participants`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ filters })
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            searchResults = result.participants;
-            displaySearchResults(searchResults);
-            showStatus(`Found ${result.count} matching participants`, true);
-        } else {
-            showStatus('Search failed: ' + result.message, false);
-        }
-    } catch (error) {
-        showStatus('Error searching participants: ' + error.message, false);
-    }
-}
-
-function displaySearchResults(participants) {
-    const resultCount = document.getElementById('resultCount');
-    const participantsList = document.getElementById('participantsList');
-    const searchResultsDiv = document.getElementById('searchResults');
-    
-    resultCount.textContent = participants.length;
-    participantsList.innerHTML = '';
-    
-    if (participants.length === 0) {
-        participantsList.innerHTML = '<p style="text-align: center; color: #666;">No participants match your search criteria.</p>';
-    } else {
-        participants.forEach((participant, index) => {
-            const div = document.createElement('div');
-            div.className = 'participant-item';
-            
-            // Create checkbox
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = `participant_${index}`;
-            checkbox.style.marginRight = '10px';
-            checkbox.addEventListener('change', function() {
-                toggleParticipantSelection(participant.phone_number);
-            });
-            
-            // Create main content div
-            const contentDiv = document.createElement('div');
-            contentDiv.style.flex = '1';
-            contentDiv.style.cursor = 'pointer';
-            contentDiv.addEventListener('click', function() {
-                checkbox.checked = !checkbox.checked;
-                toggleParticipantSelection(participant.phone_number);
-            });
-            
-            // Phone number
-            const phoneDiv = document.createElement('div');
-            phoneDiv.className = 'participant-main';
-            phoneDiv.textContent = participant.phone_number;
-            
-            // Details
-            const details = [];
-            if (participant.gender) details.push(`Gender: ${participant.gender}`);
-            if (participant.age) details.push(`Age: ${participant.age}`);
-            if (participant.region) details.push(`Region: ${participant.region}`);
-            if (participant.education) details.push(`Education: ${participant.education}`);
-            if (participant.last_fed_vote_intent) details.push(`Vote Intent: ${participant.last_fed_vote_intent}`);
-            if (participant.survey_sent) details.push(`Survey: ${participant.survey_sent ? 'Sent' : 'Not sent'}`);
-            
-            const detailsDiv = document.createElement('div');
-            detailsDiv.className = 'participant-details';
-            detailsDiv.textContent = details.join(' • ');
-            
-            // Assemble the structure
-            contentDiv.appendChild(phoneDiv);
-            contentDiv.appendChild(detailsDiv);
-            
-            div.style.display = 'flex';
-            div.style.alignItems = 'center';
-            div.appendChild(checkbox);
-            div.appendChild(contentDiv);
-            
-            participantsList.appendChild(div);
-        });
-    }
-    
-    searchResultsDiv.style.display = 'block';
-    selectedParticipants = []; // Reset selection
-    updateSendButton();
-}
-
-function selectAllResults() {
-    selectedParticipants = searchResults.map(p => p.phone_number);
-    
-    const participantItems = document.querySelectorAll('.participant-item');
-    participantItems.forEach(item => {
-        item.classList.add('selected');
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        if (checkbox) checkbox.checked = true;
-    });
-    
-    updateSendButton();
-}
-
-function deselectAllResults() {
-    selectedParticipants = [];
-    
-    const participantItems = document.querySelectorAll('.participant-item');
-    participantItems.forEach(item => {
-        item.classList.remove('selected');
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        if (checkbox) checkbox.checked = false;
-    });
-    
-    updateSendButton();
-}
-
-function clearFilters() {
-    document.getElementById('filterGender').value = '';
-    document.getElementById('filterRegion').value = '';
-    document.getElementById('filterEducation').value = '';
-    document.getElementById('filterPhoneType').value = '';
-    document.getElementById('filterVoteIntent').value = '';
-    document.getElementById('filterSurveySent').value = '';
-    document.getElementById('filterAgeMin').value = '';
-    document.getElementById('filterAgeMax').value = '';
-    
-    document.getElementById('searchResults').style.display = 'none';
-    selectedParticipants = [];
-    updateSendButton();
-}
-
-function updateSendButton() {
-    const sendBtn = document.getElementById('sendSurveyBtn');
-    
-    if (currentTargetingMode === 'all') {
-        sendBtn.textContent = '📧 Send Survey to All Consented';
-    } else if (selectedParticipants.length > 0) {
-        sendBtn.textContent = `📧 Send Survey to ${selectedParticipants.length} Selected`;
-    } else {
-        sendBtn.textContent = '📧 Send Survey (No participants selected)';
-    }
-}
-
-async function sendSurvey() {
-    const surveyUrl = document.getElementById('surveyUrl').value;
-    const customMessage = document.getElementById('customMessage').value;
-    
-    if (!surveyUrl) {
-        showStatus('Please enter a survey URL', false);
-        return;
-    }
-
-    try {
-        let response;
-        
-        if (currentTargetingMode === 'all') {
-            // Send to all consented participants (original functionality)
-            const body = `survey_url=${encodeURIComponent(surveyUrl)}`;
-            const fullBody = customMessage ? 
-                `${body}&custom_message=${encodeURIComponent(customMessage)}` : body;
-            
-            response = await fetch(`${API_BASE}/send_survey`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: fullBody
-            });
-        } else {
-            // Send to selected participants
-            if (selectedParticipants.length === 0) {
-                showStatus('Please select participants to send the survey to', false);
-                return;
-            }
-            
-            response = await fetch(`${API_BASE}/send_targeted_survey`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    survey_url: surveyUrl,
-                    phone_numbers: selectedParticipants,
-                    custom_message: customMessage
-                })
-            });
-        }
-        
-        const result = await response.json();
-        showStatus(result.message, response.ok);
-        
-        // Refresh search results if we were in search mode
-        if (currentTargetingMode === 'search' && selectedParticipants.length > 0) {
-            setTimeout(() => {
-                searchParticipants(); // Refresh to show updated survey_sent status
-            }, 1000)
-        }
-        
-    } catch (error) {
-        showStatus('Error sending survey: ' + error.message, false);
-    }
-}
-
-// Initialize when the page loads
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize survey tab when it becomes active
-    const surveyTab = document.querySelector('[onclick*="tab-survey"]');
-    if (surveyTab) {
-        surveyTab.addEventListener('click', initializeSurveyTab);
-    }
-    
-    // Also initialize if survey tab is already active
-    if (document.getElementById('tab-survey').classList.contains('active')) {
-        initializeSurveyTab();
-    }
-});
-
-let massSmsPhoneNumbers = [];
-
-// Initialize Mass SMS tab
-function initMassSmsTab() {
-    const messageTextarea = document.getElementById('massSmsMessage');
-    if (messageTextarea) {
-        messageTextarea.addEventListener('input', updateMessagePreview);
-    }
-}
-
-// Upload CSV for mass SMS
-async function uploadMassSmsCSV() {
-    const fileInput = document.getElementById('massSmsFile');
-    
-    if (!fileInput.files || fileInput.files.length === 0) {
-        showStatus('Please select a CSV file', false);
-        return;
-    }
-
-    const file = fileInput.files[0];
-    if (!file.name.endsWith('.csv')) {
-        showStatus('Please select a CSV file', false);
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-        const response = await fetch(`${API_BASE}/mass_sms_upload`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok && result.status === 'success') {
-            massSmsPhoneNumbers = result.phone_numbers;
-            displayMassSmsPreview(result.phone_numbers);
-            updateSendSummary();
-            showStatus(`Successfully loaded ${result.total} phone numbers from CSV`, true);
-        } else {
-            showStatus(result.message || 'Error processing CSV file', false);
-        }
-        
-    } catch (error) {
-        showStatus('Error uploading CSV: ' + error.message, false);
-    }
-}
-
-// Display preview of phone numbers
-function displayMassSmsPreview(phoneNumbers) {
-    const previewDiv = document.getElementById('massSmsPreview');
-    const countSpan = document.getElementById('massSmsCount');
-    const phoneList = document.getElementById('massSmsPhoneList');
-    
-    countSpan.textContent = phoneNumbers.length;
-    phoneList.innerHTML = '';
-    
-    if (phoneNumbers.length > 0) {
-        phoneNumbers.forEach(phone => {
-            const span = document.createElement('span');
-            span.className = 'phone-number-item';
-            span.textContent = phone;
-            phoneList.appendChild(span);
-        });
-        
-        previewDiv.style.display = 'block';
-    } else {
-        previewDiv.style.display = 'none';
-    }
-}
-
-// Update message preview and character count
-function updateMessagePreview() {
-    const messageTextarea = document.getElementById('massSmsMessage');
-    const messagePreview = document.getElementById('messagePreview');
-    const charCount = document.getElementById('charCount');
-    
-    const message = messageTextarea.value;
-    const charLength = message.length;
-    
-    // Update preview
-    messagePreview.textContent = message || 'Your message will appear here...';
-    
-    // Update character count with warnings
-    charCount.textContent = `${charLength} characters`;
-    
-    if (charLength > 160) {
-        charCount.className = 'char-warning';
-        messageTextarea.className = messageTextarea.className.replace(' char-over-limit', '') + ' char-over-limit';
-        
-        const messageCount = Math.ceil(charLength / 160);
-        charCount.textContent += ` (${messageCount} SMS messages)`;
-    } else if (charLength > 140) {
-        charCount.className = 'char-warning';
-        messageTextarea.className = messageTextarea.className.replace(' char-over-limit', '');
-    } else {
-        charCount.className = '';
-        messageTextarea.className = messageTextarea.className.replace(' char-over-limit', '');
-    }
-    
-    // Update send summary
-    updateSendSummary();
-}
-
-// Update the send summary
-function updateSendSummary() {
-    const sendSummary = document.getElementById('sendSummary');
-    const sendBtn = document.getElementById('sendMassSmsBtn');
-    const message = document.getElementById('massSmsMessage').value;
-    
-    if (massSmsPhoneNumbers.length > 0 && message.trim()) {
-        const messageCount = message.length > 160 ? Math.ceil(message.length / 160) : 1;
-        const totalSms = massSmsPhoneNumbers.length * messageCount;
-        
-        sendSummary.innerHTML = `
-            <strong>${massSmsPhoneNumbers.length}</strong> recipients × 
-            <strong>${messageCount}</strong> SMS${messageCount > 1 ? ' each' : ''} = 
-            <strong>${totalSms}</strong> total SMS messages
-        `;
-        
-        sendBtn.disabled = false;
-        sendBtn.style.cursor = 'pointer';
-        sendBtn.style.opacity = '1';
-    } else {
-        if (massSmsPhoneNumbers.length === 0 && !message.trim()) {
-            sendSummary.textContent = 'Upload a CSV file and write a message to get started.';
-        } else if (massSmsPhoneNumbers.length === 0) {
-            sendSummary.textContent = 'Upload a CSV file with phone numbers.';
-        } else if (!message.trim()) {
-            sendSummary.textContent = 'Write your message to continue.';
-        }
-        
-        sendBtn.disabled = true;
-        sendBtn.style.cursor = 'not-allowed';
-        sendBtn.style.opacity = '0.6';
-    }
-}
-
-// Send mass SMS
-async function sendMassSMS() {
-    const message = document.getElementById('massSmsMessage').value.trim();
-    
-    if (massSmsPhoneNumbers.length === 0) {
-        showStatus('Please upload a CSV file with phone numbers first', false);
-        return;
-    }
-    
-    if (!message) {
-        showStatus('Please enter a message to send', false);
-        return;
-    }
-    
-    // Confirm before sending
-    const messageCount = message.length > 160 ? Math.ceil(message.length / 160) : 1;
-    const totalSms = massSmsPhoneNumbers.length * messageCount;
-    
-    const confirmed = confirm(
-        `Are you sure you want to send this message to ${massSmsPhoneNumbers.length} recipients?\n\n` +
-        `This will send ${totalSms} total SMS messages.\n\n` +
-        `Message preview:\n"${message.substring(0, 100)}${message.length > 100 ? '...' : '"}"`
-    );
-    
-    if (!confirmed) {
-        return;
-    }
-    
-    // Disable send button during sending
-    const sendBtn = document.getElementById('sendMassSmsBtn');
-    const originalText = sendBtn.textContent;
-    sendBtn.disabled = true;
-    sendBtn.textContent = '📤 Sending...';
-    
-    try {
-        const response = await fetch(`${API_BASE}/send_mass_sms`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                phone_numbers: massSmsPhoneNumbers,
-                message: message
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok && result.status === 'success') {
-            displayMassSmsResults(result);
-            showStatus(`Mass SMS sent successfully to ${result.successful_sends} recipients!`, true);
-            
-            // Clear the form
-            document.getElementById('massSmsMessage').value = '';
-            document.getElementById('massSmsFile').value = '';
-            massSmsPhoneNumbers = [];
-            document.getElementById('massSmsPreview').style.display = 'none';
-            updateMessagePreview();
-            
-        } else {
-            showStatus(result.message || 'Error sending mass SMS', false);
-        }
-        
-    } catch (error) {
-        showStatus('Error sending mass SMS: ' + error.message, false);
-    } finally {
-        // Re-enable send button
-        sendBtn.disabled = false;
-        sendBtn.textContent = originalText;
-        updateSendSummary();
-    }
-}
-
-// Display mass SMS results
-function displayMassSmsResults(result) {
-    const resultsDiv = document.getElementById('massSmsResults');
-    const resultsContent = document.getElementById('massSmsResultsContent');
-    
-    let html = `
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px;">
-            <div style="padding: 15px; background-color: #d4edda; border-radius: 5px;">
-                <h4 style="margin: 0 0 5px 0; color: #155724;">✅ Successful</h4>
-                <div style="font-size: 24px; font-weight: bold; color: #155724;">${result.successful_sends}</div>
-            </div>
-            <div style="padding: 15px; background-color: #f8d7da; border-radius: 5px;">
-                <h4 style="margin: 0 0 5px 0; color: #721c24;">❌ Failed</h4>
-                <div style="font-size: 24px; font-weight: bold; color: #721c24;">${result.failed_sends}</div>
-            </div>
-        </div>
-    `;
-    
-    if (result.failures && result.failures.length > 0) {
-        html += `
-            <div style="margin-top: 15px;">
-                <h4>Failed Numbers:</h4>
-                <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px; background-color: #f8f9fa;">
-        `;
-        
-        result.failures.forEach(failure => {
-            html += `<div style="margin-bottom: 5px;"><strong>${failure.phone}:</strong> ${failure.reason}</div>`;
-        });
-        
-        html += `</div></div>`;
-    }
-    
-    resultsContent.innerHTML = html;
-    resultsDiv.style.display = 'block';
-    
-    // Scroll to results
-    resultsDiv.scrollIntoView({ behavior: 'smooth' });
-}
-
-// Initialize when tab is opened
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize mass SMS tab when it becomes active
-    const massSmsTab = document.querySelector('[onclick*="tab-mass-sms"]');
-    if (massSmsTab) {
-        massSmsTab.addEventListener('click', initMassSmsTab);
-    }
-    
-    // Also initialize if mass SMS tab is already active
-    if (document.getElementById('tab-mass-sms') && document.getElementById('tab-mass-sms').classList.contains('active')) {
-        initMassSmsTab();
-    }
-});
     </script>
 </body>
 </html>'''
