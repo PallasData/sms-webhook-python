@@ -1389,7 +1389,6 @@ def participants():
             conn.close()
 
 @app.route('/')
-@app.route('/')
 def dashboard():
     """Serve the dashboard HTML"""
     return '''<!DOCTYPE html>
@@ -1957,7 +1956,9 @@ def dashboard():
                     massSmsPhoneNumbers = [];
                     document.getElementById('massSmsPreview').style.display = 'none';
                 } else {
-                    showStatus(result.message || 'Error sending mass SMS', false);
+                     console.log('Error response:', result);  // Add this line for debugging
+    const errorMessage = result.message || result.error || 'Error sending mass SMS';
+    showStatus(errorMessage, false);
                 }
             } catch (error) {
                 showStatus('Error sending mass SMS: ' + error.message, false);
