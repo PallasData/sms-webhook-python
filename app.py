@@ -1916,58 +1916,80 @@ def dashboard():
         }
 
         async function sendMassSMS() {
-            const message = document.getElementById('massSmsMessage').value.trim();
-            
-            if (massSmsPhoneNumbers.length === 0) {
-                showStatus('Please upload a CSV file with phone numbers first', false);
-                return;
-            }
-            
-            if (!message) {
-                showStatus('Please enter a message to send', false);
-                return;
-            }
-            
-            const confirmed = confirm(`Send this message to ${massSmsPhoneNumbers.length} recipients?`);
-            if (!confirmed) return;
-            
-            const sendBtn = document.getElementById('sendMassSmsBtn');
-            sendBtn.disabled = true;
-            sendBtn.textContent = '📤 Sending...';
-            
-            try {
-                const response = await fetch(`${API_BASE}/send_mass_sms`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        phone_numbers: massSmsPhoneNumbers,
-                        message: message
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok && result.status === 'success') {
-                    showStatus(`Mass SMS sent successfully to ${result.successful_sends} recipients!`, true);
-                    
-                    // Clear form
-                    document.getElementById('massSmsMessage').value = '';
-                    document.getElementById('massSmsFile').value = '';
-                    massSmsPhoneNumbers = [];
-                    document.getElementById('massSmsPreview').style.display = 'none';
-                } else {
-                     console.log('Error response:', result);  // Add this line for debugging
-    const errorMessage = result.message || result.error || 'Error sending mass SMS';
-    showStatus(errorMessage, false);
-                }
-            } catch (error) {
-                showStatus('Error sending mass SMS: ' + error.message, false);
-            } finally {
-                sendBtn.disabled = false;
-                sendBtn.textContent = '🚀 Send Mass SMS';
-                updateSendSummary();
-            }
+    const message = document.getElementById('massSmsMessage').value.trim();
+    
+    if (massSmsPhoneNumbers.length === 0) {
+        showStatus('Please upload a CSV file with phone numbers first', false);
+        return;
+    }
+    
+    if (!message) {
+        showStatus('Please enter a message to send', false);
+        return;
+    }
+    
+    const confirmed = confirm(`Send this message to ${massSmsPhoneNumbers.length} recipients?`);
+    if (!confirmed) return;
+    
+    const sendBtn = document.getElementById('sendMassSmsBtn');
+    const originalText = sendBtn.textContent;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '📤 Sending...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/send_mass_sms`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                phone_numbers: massSmsPhoneNumbers,
+                message: message
+            })
+        });
+        
+        // Check if response is JSON
+        let result;
+        try {
+            result = await response.json();
+        } catch (jsonError) {
+            console.error('JSON parse error:', jsonError);
+            showStatus('Server returned invalid response', false);
+            return;
         }
+        
+        console.log('Server response:', result);
+        
+        if (response.ok) {
+            if (result && result.status === 'success') {
+                const successCount = result.successful_sends || 0;
+                showStatus(`Mass SMS sent successfully to ${successCount} recipients!`, true);
+                
+                // Clear form
+                document.getElementById('massSmsMessage').value = '';
+                document.getElementById('massSmsFile').value = '';
+                massSmsPhoneNumbers = [];
+                document.getElementById('massSmsPreview').style.display = 'none';
+                updateSendSummary();
+            } else {
+                // Handle success response but with different status
+                const msg = result.message || 'SMS sent but with unknown status';
+                showStatus(msg, true);
+            }
+        } else {
+            // Handle error response
+            const errorMsg = result.message || result.error || `Server error: ${response.status}`;
+            showStatus(errorMsg, false);
+        }
+        
+    } catch (error) {
+        console.error('Network error:', error);
+        showStatus('Network error: ' + error.message, false);
+    } finally {
+        // Re-enable send button
+        sendBtn.disabled = false;
+        sendBtn.textContent = originalText;
+        updateSendSummary();
+    }
+}
 
         // Initialize character counter for mass SMS
         document.addEventListener('DOMContentLoaded', function() {
