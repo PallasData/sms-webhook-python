@@ -126,7 +126,130 @@
                 </table>
             </div>
         </div>
+        <div class="tab" onclick="openTab(event, 'tab-mass-sms')">Mass SMS</div>
+
+<!-- Add this as a new tab content section -->
+<div id="tab-mass-sms" class="tab-content">
+    <div class="section">
+        <h2>📱 Mass SMS Service</h2>
+        <p style="color: #666; margin-bottom: 20px;">
+            Send custom SMS messages to a list of phone numbers from a CSV file. 
+            <strong>Note:</strong> This service sends messages directly without requiring consent - use responsibly and ensure compliance with local regulations.
+        </p>
         
+        <!-- Step 1: Upload CSV -->
+        <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
+            <h3 style="margin-top: 0;">Step 1: Upload Phone Numbers</h3>
+            <div class="form-group">
+                <label for="massSmsFile">Select CSV file with phone numbers:</label>
+                <input type="file" id="massSmsFile" accept=".csv">
+                <p style="color: #6c757d; font-size: 14px; margin-top: 5px;">
+                    CSV should contain a column with phone numbers (e.g., "phone", "mobile", "number").
+                </p>
+            </div>
+            <button onclick="uploadMassSmsCSV()" style="background-color: #17a2b8;">📂 Upload & Preview Numbers</button>
+            
+            <!-- Phone Numbers Preview -->
+            <div id="massSmsPreview" class="preview-area" style="display: none;">
+                <div class="preview-header">📋 Phone Numbers Preview (<span id="massSmsCount">0</span> numbers found):</div>
+                <div id="massSmsPhoneList" style="max-height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 3px; background-color: white;">
+                    <!-- Phone numbers will be listed here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Step 2: Compose Message -->
+        <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f8f9fa;">
+            <h3 style="margin-top: 0;">Step 2: Compose Your Message</h3>
+            <div class="form-group">
+                <label for="massSmsMessage">Message Text:</label>
+                <textarea id="massSmsMessage" rows="4" placeholder="Enter your message here..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; resize: vertical;"></textarea>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                    <span id="charCount" style="color: #666; font-size: 14px;">0 characters</span>
+                    <span style="color: #666; font-size: 12px;">💡 SMS limit: 160 characters per message</span>
+                </div>
+            </div>
+            
+            <!-- Message Preview -->
+            <div style="margin-top: 15px; padding: 10px; background-color: white; border: 1px solid #ddd; border-radius: 5px;">
+                <strong>Message Preview:</strong>
+                <div id="messagePreview" style="margin-top: 5px; padding: 8px; background-color: #e9ecef; border-radius: 3px; font-family: monospace; min-height: 20px; white-space: pre-wrap;">
+                    Your message will appear here...
+                </div>
+            </div>
+        </div>
+        
+        <!-- Step 3: Send -->
+        <div style="margin-bottom: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #fff3cd;">
+            <h3 style="margin-top: 0;">Step 3: Send Mass SMS</h3>
+            <div style="margin-bottom: 15px;">
+                <strong>Ready to send:</strong>
+                <div id="sendSummary" style="margin-top: 5px; color: #666;">
+                    Upload a CSV file and write a message to get started.
+                </div>
+            </div>
+            
+            <div style="text-align: center;">
+                <button id="sendMassSmsBtn" onclick="sendMassSMS()" disabled style="background-color: #28a745; font-size: 18px; padding: 15px 30px; border: none; border-radius: 5px; color: white; cursor: not-allowed; opacity: 0.6;">
+                    🚀 Send Mass SMS
+                </button>
+            </div>
+            
+            <div style="margin-top: 10px; padding: 10px; background-color: #fff; border: 1px solid #ffc107; border-radius: 3px; font-size: 14px;">
+                <strong>⚠️ Important:</strong> Mass SMS will be sent immediately. Please ensure:
+                <ul style="margin: 5px 0 0 20px; padding: 0;">
+                    <li>You have permission to contact these numbers</li>
+                    <li>Your message complies with local SMS regulations</li>
+                    <li>You've reviewed the recipient list and message content</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Results -->
+        <div id="massSmsResults" style="display: none; margin-top: 20px; padding: 15px; border-radius: 5px;">
+            <h3>📊 Send Results</h3>
+            <div id="massSmsResultsContent">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+#massSmsMessage {
+    font-family: Arial, sans-serif;
+    line-height: 1.4;
+}
+
+.char-warning {
+    color: #dc3545 !important;
+    font-weight: bold;
+}
+
+.char-over-limit {
+    background-color: #f8d7da !important;
+    border-color: #f5c6cb !important;
+}
+
+#sendMassSmsBtn:not(:disabled) {
+    cursor: pointer !important;
+    opacity: 1 !important;
+}
+
+#sendMassSmsBtn:not(:disabled):hover {
+    background-color: #218838 !important;
+}
+
+.phone-number-item {
+    display: inline-block;
+    margin: 2px 5px;
+    padding: 3px 8px;
+    background-color: #e9ecef;
+    border-radius: 12px;
+    font-size: 12px;
+    font-family: monospace;
+}
+</style>
         <div class="section">
             <h2>App Status</h2>
             <button onclick="checkHealth()">Check App Health</button>
