@@ -1566,6 +1566,7 @@ def dashboard():
             <div class="tab" onclick="openTab(event, 'tab-csv')">CSV Upload</div>
             <div class="tab" onclick="openTab(event, 'tab-survey')">Send Survey</div>
             <div class="tab" onclick="openTab(event, 'tab-manage')">Manage Data</div>
+            <div class="tab" onclick="openTab(event, 'tab-mass-sms')">Mass SMS</div>
         </div>
         
         <div id="tab-single" class="tab-content active">
