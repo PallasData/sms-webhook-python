@@ -741,6 +741,160 @@ def get_filter_options():
     finally:
         conn.close()
 
+def send_mass_sms(phone_numbers, message):
+    """Send custom SMS message to a list of phone numbers"""
+    if not phone_numbers:
+        return {"status": "error", "message": "No phone numbers provided"}
+    
+    if not message or not message.strip():
+        return {"status": "error", "message": "Message cannot be empty"}
+    
+    results = {"success": [], "failed": []}
+    
+    for phone in phone_numbers:
+        # Clean and validate phone number
+        phone = phone.strip()
+        if not phone:
+            continue
+            
+        if not is_valid_phone_number(phone):
+            results["failed"].append({"phone": phone, "reason": "Invalid phone number format"})
+            continue
+        
+        # Normalize phone number
+        normalized_phone = normalize_phone_number(phone)
+        
+        # Send SMS
+        if send_sms(normalized_phone, message.strip()):
+            results["success"].append(normalized_phone)
+        else:
+            results["failed"].append({"phone": normalized_phone, "reason": "Failed to send SMS"})
+        
+        # Add small delay for rate limiting
+        import time
+        time.sleep(1)
+    
+    return results
+
+def process_mass_sms_csv(file_content):
+    """Process CSV file for mass SMS (extract phone numbers only)"""
+    try:
+        # Try to decode the file content as UTF-8
+        if isinstance(file_content, bytes):
+            file_content = file_content.decode('utf-8')
+        
+        print("MASS SMS CSV DEBUGGING: File content decoded successfully")
+        
+        # Use StringIO to create a file-like object
+        csv_file = io.StringIO(file_content)
+        
+        # Try to read the CSV file
+        reader = csv.reader(csv_file)
+        
+        # Get all rows
+        rows = list(reader)
+        
+        print(f"MASS SMS CSV DEBUGGING: CSV has {len(rows)} rows (including header)")
+        
+        if not rows:
+            return {"status": "error", "message": "CSV file is empty"}
+        
+        # Print the first few rows for debugging
+        print("MASS SMS CSV DEBUGGING: First 2 rows:")
+        for i, row in enumerate(rows[:2]):
+            print(f"  Row {i}: {row}")
+        
+        # Extract phone numbers
+        phone_numbers = []
+        
+        # Check the first row for headers
+        first_row = rows[0]
+        header_row = True
+        
+        print(f"MASS SMS CSV DEBUGGING: Headers: {first_row}")
+        
+        # Look for columns that might contain phone numbers
+        phone_col_indices = []
+        for i, header in enumerate(first_row):
+            header_lower = header.lower().strip()
+            print(f"MASS SMS CSV DEBUGGING: Checking header '{header}' (lower: '{header_lower}')")
+            if header_lower == 'phone_number' or any(keyword in header_lower for keyword in ['phone', 'mobile', 'cell', 'contact', 'number', 'tel']):
+                phone_col_indices.append(i)
+                print(f"MASS SMS CSV DEBUGGING: Found potential phone column: '{header}' at index {i}")
+        
+        # If we couldn't find any phone columns, maybe the first row isn't a header
+        if not phone_col_indices:
+            print("MASS SMS CSV DEBUGGING: No phone columns found in header row")
+            # Check if the first row might contain phone numbers itself
+            for i, cell in enumerate(first_row):
+                cell_value = str(cell).strip()
+                print(f"MASS SMS CSV DEBUGGING: Testing if '{cell_value}' is a valid phone number")
+                if cell_value and is_valid_phone_number(cell_value):
+                    print(f"MASS SMS CSV DEBUGGING: Found valid phone number in first row: {cell_value}")
+                    header_row = False
+                    phone_col_indices.append(i)
+                    break
+        
+        # If we still couldn't find phone columns, try the first column
+        if not phone_col_indices:
+            print("MASS SMS CSV DEBUGGING: Using first column as default phone column")
+            phone_col_indices.append(0)
+        
+        print(f"MASS SMS CSV DEBUGGING: Using columns at indices {phone_col_indices} for phone numbers")
+        print(f"MASS SMS CSV DEBUGGING: Treating first row as header: {header_row}")
+        
+        # Start from the appropriate row (skip header if we identified one)
+        start_row = 1 if header_row else 0
+        
+        # Extract phone numbers from identified columns
+        valid_phones_found = 0
+        invalid_phones_found = 0
+        
+        for row_idx, row in enumerate(rows[start_row:], start=start_row):
+            phone_found = False
+            for col_idx in phone_col_indices:
+                if col_idx < len(row):
+                    cell_value = str(row[col_idx]).strip()
+                    if cell_value:
+                        is_valid = is_valid_phone_number(cell_value)
+                        print(f"MASS SMS CSV DEBUGGING: Row {row_idx}, Column {col_idx}: '{cell_value}' Valid: {is_valid}")
+                        if is_valid:
+                            normalized = normalize_phone_number(cell_value)
+                            print(f"MASS SMS CSV DEBUGGING: Normalized: {normalized}")
+                            phone_numbers.append(normalized)
+                            valid_phones_found += 1
+                            phone_found = True
+                            break
+                        else:
+                            invalid_phones_found += 1
+            
+            if not phone_found and row_idx < start_row + 5:  # Only log first few rows to avoid flooding logs
+                print(f"MASS SMS CSV DEBUGGING: No valid phone number found in row {row_idx}")
+        
+        print(f"MASS SMS CSV DEBUGGING: Found {valid_phones_found} valid and {invalid_phones_found} invalid phone numbers")
+        
+        # Remove duplicates while preserving order
+        unique_phones = []
+        seen = set()
+        for phone in phone_numbers:
+            if phone not in seen:
+                seen.add(phone)
+                unique_phones.append(phone)
+        
+        print(f"MASS SMS CSV DEBUGGING: Returning {len(unique_phones)} unique phone numbers")
+        
+        return {
+            "status": "success", 
+            "phone_numbers": unique_phones,
+            "total": len(unique_phones)
+        }
+    
+    except Exception as e:
+        print(f"MASS SMS CSV DEBUGGING ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": f"Error processing CSV: {str(e)}"}
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Handle Twilio webhook"""
@@ -860,6 +1014,7 @@ def upload_csv():
     
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error processing file: {str(e)}"}), 500
+        
 @app.route('/send_bulk_consent', methods=['POST'])
 def send_bulk_consent():
     """Send consent requests to a list of phone numbers"""
@@ -1001,6 +1156,73 @@ def send_targeted_survey_endpoint():
         return jsonify({
             "status": "success",
             "message": f"Survey sent to {len(results['success'])} participants",
+            "successful_sends": len(results['success']),
+            "failed_sends": len(results['failed']),
+            "failures": results['failed']
+        })
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/mass_sms_upload', methods=['POST'])
+def mass_sms_upload():
+    """Handle CSV upload for mass SMS"""
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "No selected file"}), 400
+    
+    if not file.filename.endswith('.csv'):
+        return jsonify({"status": "error", "message": "File must be a CSV"}), 400
+    
+    try:
+        # Read the file content
+        file_content = file.read()
+        
+        # Process the CSV file
+        result = process_mass_sms_csv(file_content)
+        
+        if result["status"] == "error":
+            return jsonify(result), 400
+        
+        # Return the extracted phone numbers for preview
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully extracted {result['total']} phone numbers from CSV",
+            "phone_numbers": result["phone_numbers"],
+            "total": result["total"]
+        })
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error processing file: {str(e)}"}), 500
+
+@app.route('/send_mass_sms', methods=['POST'])
+def send_mass_sms_endpoint():
+    """Send mass SMS to phone numbers"""
+    try:
+        data = request.get_json()
+        
+        phone_numbers = data.get('phone_numbers', [])
+        message = data.get('message', '')
+        
+        if not phone_numbers:
+            return jsonify({"status": "error", "message": "No phone numbers provided"}), 400
+        
+        if not message or not message.strip():
+            return jsonify({"status": "error", "message": "Message cannot be empty"}), 400
+        
+        # Send the mass SMS
+        results = send_mass_sms(phone_numbers, message)
+        
+        if results["status"] == "error":
+            return jsonify(results), 400
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Mass SMS sent to {len(results['success'])} recipients",
             "successful_sends": len(results['success']),
             "failed_sends": len(results['failed']),
             "failures": results['failed']
