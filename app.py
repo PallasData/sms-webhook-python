@@ -1863,17 +1863,19 @@ def dashboard():
                 const result = await response.json();
                 
                 if (response.ok && result.status === 'success') {
-                    massSmsPhoneNumbers = result.phone_numbers;
-                    displayMassSmsPreview(result.phone_numbers);
-                    updateSendSummary();
-                    showStatus(`Successfully loaded ${result.total} phone numbers from CSV`, true);
-                } else {
-                    showStatus(result.message || 'Error processing CSV file', false);
-                }
-            } catch (error) {
-                showStatus('Error uploading CSV: ' + error.message, false);
-            }
-        }
+    showStatus(`Mass SMS sent successfully to ${result.successful_sends} recipients!`, true);
+    
+    // Clear form
+    document.getElementById('massSmsMessage').value = '';
+    document.getElementById('massSmsFile').value = '';
+    massSmsPhoneNumbers = [];
+    document.getElementById('massSmsPreview').style.display = 'none';
+    updateSendSummary();
+} else {
+    // Make sure we're showing the actual message, not the word "status"
+    const errorMessage = result.message || result.error || 'Error sending mass SMS';
+    showStatus(errorMessage, false);
+}
 
         function displayMassSmsPreview(phoneNumbers) {
             const previewDiv = document.getElementById('massSmsPreview');
