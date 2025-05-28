@@ -1932,11 +1932,21 @@ def dashboard():
     if (!confirmed) return;
     
     const sendBtn = document.getElementById('sendMassSmsBtn');
-    const originalText = sendBtn.textContent;
     sendBtn.disabled = true;
     sendBtn.textContent = '📤 Sending...';
     
+    // Create a debug area to show what's happening
+    let debugDiv = document.getElementById('debugInfo');
+    if (!debugDiv) {
+        debugDiv = document.createElement('div');
+        debugDiv.id = 'debugInfo';
+        debugDiv.style.cssText = 'margin:20px 0; padding:15px; background:#f0f0f0; border:1px solid #ccc; border-radius:5px; font-family:monospace; font-size:12px;';
+        document.getElementById('tab-mass-sms').appendChild(debugDiv);
+    }
+    
     try {
+        debugDiv.innerHTML = 'Step 1: Making request to server...<br>';
+        
         const response = await fetch(`${API_BASE}/send_mass_sms`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1946,47 +1956,45 @@ def dashboard():
             })
         });
         
-        // Check if response is JSON
+        debugDiv.innerHTML += `Step 2: Got response with status ${response.status}<br>`;
+        debugDiv.innerHTML += `Step 3: Response OK: ${response.ok}<br>`;
+        
+        const responseText = await response.text();
+        debugDiv.innerHTML += `Step 4: Raw response text: ${responseText}<br>`;
+        
         let result;
         try {
-            result = await response.json();
-        } catch (jsonError) {
-            console.error('JSON parse error:', jsonError);
-            showStatus('Server returned invalid response', false);
+            result = JSON.parse(responseText);
+            debugDiv.innerHTML += `Step 5: Parsed JSON successfully<br>`;
+            debugDiv.innerHTML += `Step 6: Result object: ${JSON.stringify(result)}<br>`;
+        } catch (parseError) {
+            debugDiv.innerHTML += `Step 5: JSON parse failed: ${parseError.message}<br>`;
+            showStatus('Server returned invalid JSON response', false);
             return;
         }
         
-        console.log('Server response:', result);
-        
-        if (response.ok) {
-            if (result && result.status === 'success') {
-                const successCount = result.successful_sends || 0;
-                showStatus(`Mass SMS sent successfully to ${successCount} recipients!`, true);
-                
-                // Clear form
-                document.getElementById('massSmsMessage').value = '';
-                document.getElementById('massSmsFile').value = '';
-                massSmsPhoneNumbers = [];
-                document.getElementById('massSmsPreview').style.display = 'none';
-                updateSendSummary();
-            } else {
-                // Handle success response but with different status
-                const msg = result.message || 'SMS sent but with unknown status';
-                showStatus(msg, true);
-            }
+        if (response.ok && result.status === 'success') {
+            const successMsg = `Mass SMS sent successfully to ${result.successful_sends} recipients!`;
+            debugDiv.innerHTML += `Step 7: Showing success message: ${successMsg}<br>`;
+            showStatus(successMsg, true);
+            
+            // Clear form
+            document.getElementById('massSmsMessage').value = '';
+            document.getElementById('massSmsFile').value = '';
+            massSmsPhoneNumbers = [];
+            document.getElementById('massSmsPreview').style.display = 'none';
         } else {
-            // Handle error response
-            const errorMsg = result.message || result.error || `Server error: ${response.status}`;
+            const errorMsg = result.message || 'Unknown error occurred';
+            debugDiv.innerHTML += `Step 7: Showing error message: ${errorMsg}<br>`;
             showStatus(errorMsg, false);
         }
         
     } catch (error) {
-        console.error('Network error:', error);
+        debugDiv.innerHTML += `Step ERROR: Network error: ${error.message}<br>`;
         showStatus('Network error: ' + error.message, false);
     } finally {
-        // Re-enable send button
         sendBtn.disabled = false;
-        sendBtn.textContent = originalText;
+        sendBtn.textContent = '🚀 Send Mass SMS';
         updateSendSummary();
     }
 }
