@@ -94,39 +94,7 @@
             </div>
             <button onclick="sendConsent()">Send Consent Request</button>
         </div>
-        
-        <div class="section">
-            <h2>Send Survey Link</h2>
-            <div class="form-group">
-                <label for="surveyUrl">Survey URL:</label>
-                <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
-            </div>
-            <div class="form-group">
-                <label for="customMessage">Custom Message (optional):</label>
-                <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
-            </div>
-            <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
-        </div>
-        
-        <div class="section">
-            <h2>Manage Participants</h2>
-            <button onclick="viewParticipants()">View All Participants</button>
-            <div id="participantsTable" style="margin-top: 20px; display: none;">
-                <table id="participantsData" style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background-color: #f8f9fa;">
-                            <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
-                        </tr>
-                    </thead>
-                    <tbody id="participantsBody">
-                    </tbody>
-                </table>
-            </div>
-        </div>
-<div id="tab-mass-sms" class="tab-content">
+        <div id="tab-mass-sms" class="tab-content">
          <div class="section">
         <h2>📱 Mass SMS Service</h2>
         <p style="color: #666; margin-bottom: 20px;">
@@ -247,6 +215,38 @@
     font-family: monospace;
 }
 </style>
+        <div class="section">
+            <h2>Send Survey Link</h2>
+            <div class="form-group">
+                <label for="surveyUrl">Survey URL:</label>
+                <input type="url" id="surveyUrl" placeholder="https://your-survey-link.com">
+            </div>
+            <div class="form-group">
+                <label for="customMessage">Custom Message (optional):</label>
+                <textarea id="customMessage" rows="3" placeholder="Enter a custom message to send with the survey link..."></textarea>
+            </div>
+            <button onclick="sendSurvey()">Send Survey to All Consented Participants</button>
+        </div>
+        
+        <div class="section">
+            <h2>Manage Participants</h2>
+            <button onclick="viewParticipants()">View All Participants</button>
+            <div id="participantsTable" style="margin-top: 20px; display: none;">
+                <table id="participantsData" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Consent Status</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Email</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Survey Sent</th>
+                        </tr>
+                    </thead>
+                    <tbody id="participantsBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
 
 
         <div class="section">
