@@ -2651,7 +2651,7 @@ async function sendSurvey() {
         if (currentTargetingMode === 'search' && selectedParticipants.length > 0) {
             setTimeout(() => {
                 searchParticipants(); // Refresh to show updated survey_sent status
-            }, 1000);
+            }, 1000)
         }
         
     } catch (error) {
@@ -2670,6 +2670,272 @@ document.addEventListener('DOMContentLoaded', function() {
     // Also initialize if survey tab is already active
     if (document.getElementById('tab-survey').classList.contains('active')) {
         initializeSurveyTab();
+    }
+});
+
+let massSmsPhoneNumbers = [];
+
+// Initialize Mass SMS tab
+function initMassSmsTab() {
+    const messageTextarea = document.getElementById('massSmsMessage');
+    if (messageTextarea) {
+        messageTextarea.addEventListener('input', updateMessagePreview);
+    }
+}
+
+// Upload CSV for mass SMS
+async function uploadMassSmsCSV() {
+    const fileInput = document.getElementById('massSmsFile');
+    
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showStatus('Please select a CSV file', false);
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (!file.name.endsWith('.csv')) {
+        showStatus('Please select a CSV file', false);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch(`${API_BASE}/mass_sms_upload`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.status === 'success') {
+            massSmsPhoneNumbers = result.phone_numbers;
+            displayMassSmsPreview(result.phone_numbers);
+            updateSendSummary();
+            showStatus(`Successfully loaded ${result.total} phone numbers from CSV`, true);
+        } else {
+            showStatus(result.message || 'Error processing CSV file', false);
+        }
+        
+    } catch (error) {
+        showStatus('Error uploading CSV: ' + error.message, false);
+    }
+}
+
+// Display preview of phone numbers
+function displayMassSmsPreview(phoneNumbers) {
+    const previewDiv = document.getElementById('massSmsPreview');
+    const countSpan = document.getElementById('massSmsCount');
+    const phoneList = document.getElementById('massSmsPhoneList');
+    
+    countSpan.textContent = phoneNumbers.length;
+    phoneList.innerHTML = '';
+    
+    if (phoneNumbers.length > 0) {
+        phoneNumbers.forEach(phone => {
+            const span = document.createElement('span');
+            span.className = 'phone-number-item';
+            span.textContent = phone;
+            phoneList.appendChild(span);
+        });
+        
+        previewDiv.style.display = 'block';
+    } else {
+        previewDiv.style.display = 'none';
+    }
+}
+
+// Update message preview and character count
+function updateMessagePreview() {
+    const messageTextarea = document.getElementById('massSmsMessage');
+    const messagePreview = document.getElementById('messagePreview');
+    const charCount = document.getElementById('charCount');
+    
+    const message = messageTextarea.value;
+    const charLength = message.length;
+    
+    // Update preview
+    messagePreview.textContent = message || 'Your message will appear here...';
+    
+    // Update character count with warnings
+    charCount.textContent = `${charLength} characters`;
+    
+    if (charLength > 160) {
+        charCount.className = 'char-warning';
+        messageTextarea.className = messageTextarea.className.replace(' char-over-limit', '') + ' char-over-limit';
+        
+        const messageCount = Math.ceil(charLength / 160);
+        charCount.textContent += ` (${messageCount} SMS messages)`;
+    } else if (charLength > 140) {
+        charCount.className = 'char-warning';
+        messageTextarea.className = messageTextarea.className.replace(' char-over-limit', '');
+    } else {
+        charCount.className = '';
+        messageTextarea.className = messageTextarea.className.replace(' char-over-limit', '');
+    }
+    
+    // Update send summary
+    updateSendSummary();
+}
+
+// Update the send summary
+function updateSendSummary() {
+    const sendSummary = document.getElementById('sendSummary');
+    const sendBtn = document.getElementById('sendMassSmsBtn');
+    const message = document.getElementById('massSmsMessage').value;
+    
+    if (massSmsPhoneNumbers.length > 0 && message.trim()) {
+        const messageCount = message.length > 160 ? Math.ceil(message.length / 160) : 1;
+        const totalSms = massSmsPhoneNumbers.length * messageCount;
+        
+        sendSummary.innerHTML = `
+            <strong>${massSmsPhoneNumbers.length}</strong> recipients × 
+            <strong>${messageCount}</strong> SMS${messageCount > 1 ? ' each' : ''} = 
+            <strong>${totalSms}</strong> total SMS messages
+        `;
+        
+        sendBtn.disabled = false;
+        sendBtn.style.cursor = 'pointer';
+        sendBtn.style.opacity = '1';
+    } else {
+        if (massSmsPhoneNumbers.length === 0 && !message.trim()) {
+            sendSummary.textContent = 'Upload a CSV file and write a message to get started.';
+        } else if (massSmsPhoneNumbers.length === 0) {
+            sendSummary.textContent = 'Upload a CSV file with phone numbers.';
+        } else if (!message.trim()) {
+            sendSummary.textContent = 'Write your message to continue.';
+        }
+        
+        sendBtn.disabled = true;
+        sendBtn.style.cursor = 'not-allowed';
+        sendBtn.style.opacity = '0.6';
+    }
+}
+
+// Send mass SMS
+async function sendMassSMS() {
+    const message = document.getElementById('massSmsMessage').value.trim();
+    
+    if (massSmsPhoneNumbers.length === 0) {
+        showStatus('Please upload a CSV file with phone numbers first', false);
+        return;
+    }
+    
+    if (!message) {
+        showStatus('Please enter a message to send', false);
+        return;
+    }
+    
+    // Confirm before sending
+    const messageCount = message.length > 160 ? Math.ceil(message.length / 160) : 1;
+    const totalSms = massSmsPhoneNumbers.length * messageCount;
+    
+    const confirmed = confirm(
+        `Are you sure you want to send this message to ${massSmsPhoneNumbers.length} recipients?\n\n` +
+        `This will send ${totalSms} total SMS messages.\n\n` +
+        `Message preview:\n"${message.substring(0, 100)}${message.length > 100 ? '...' : '"}"`
+    );
+    
+    if (!confirmed) {
+        return;
+    }
+    
+    // Disable send button during sending
+    const sendBtn = document.getElementById('sendMassSmsBtn');
+    const originalText = sendBtn.textContent;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '📤 Sending...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/send_mass_sms`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                phone_numbers: massSmsPhoneNumbers,
+                message: message
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.status === 'success') {
+            displayMassSmsResults(result);
+            showStatus(`Mass SMS sent successfully to ${result.successful_sends} recipients!`, true);
+            
+            // Clear the form
+            document.getElementById('massSmsMessage').value = '';
+            document.getElementById('massSmsFile').value = '';
+            massSmsPhoneNumbers = [];
+            document.getElementById('massSmsPreview').style.display = 'none';
+            updateMessagePreview();
+            
+        } else {
+            showStatus(result.message || 'Error sending mass SMS', false);
+        }
+        
+    } catch (error) {
+        showStatus('Error sending mass SMS: ' + error.message, false);
+    } finally {
+        // Re-enable send button
+        sendBtn.disabled = false;
+        sendBtn.textContent = originalText;
+        updateSendSummary();
+    }
+}
+
+// Display mass SMS results
+function displayMassSmsResults(result) {
+    const resultsDiv = document.getElementById('massSmsResults');
+    const resultsContent = document.getElementById('massSmsResultsContent');
+    
+    let html = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px;">
+            <div style="padding: 15px; background-color: #d4edda; border-radius: 5px;">
+                <h4 style="margin: 0 0 5px 0; color: #155724;">✅ Successful</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #155724;">${result.successful_sends}</div>
+            </div>
+            <div style="padding: 15px; background-color: #f8d7da; border-radius: 5px;">
+                <h4 style="margin: 0 0 5px 0; color: #721c24;">❌ Failed</h4>
+                <div style="font-size: 24px; font-weight: bold; color: #721c24;">${result.failed_sends}</div>
+            </div>
+        </div>
+    `;
+    
+    if (result.failures && result.failures.length > 0) {
+        html += `
+            <div style="margin-top: 15px;">
+                <h4>Failed Numbers:</h4>
+                <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px; background-color: #f8f9fa;">
+        `;
+        
+        result.failures.forEach(failure => {
+            html += `<div style="margin-bottom: 5px;"><strong>${failure.phone}:</strong> ${failure.reason}</div>`;
+        });
+        
+        html += `</div></div>`;
+    }
+    
+    resultsContent.innerHTML = html;
+    resultsDiv.style.display = 'block';
+    
+    // Scroll to results
+    resultsDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Initialize when tab is opened
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize mass SMS tab when it becomes active
+    const massSmsTab = document.querySelector('[onclick*="tab-mass-sms"]');
+    if (massSmsTab) {
+        massSmsTab.addEventListener('click', initMassSmsTab);
+    }
+    
+    // Also initialize if mass SMS tab is already active
+    if (document.getElementById('tab-mass-sms') && document.getElementById('tab-mass-sms').classList.contains('active')) {
+        initMassSmsTab();
     }
 });
     </script>
